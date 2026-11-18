@@ -25,13 +25,19 @@ def claude_code_available() -> bool:
     return shutil.which("claude") is not None
 
 
-def call(prompt: str, mode: str, cfg: dict, images: list[bytes] | None = None, max_tokens: int = 4000, image_paths: list | None = None) -> str:
+def model_for(task: str, cfg: dict) -> str:
+    """the smallest model that does the task well: haiku for mechanical steps, sonnet where judgement matters. Opus isn't needed."""
+    return cfg.get("ai", {}).get("models", {}).get(task, "sonnet")
+
+
+def call(prompt: str, mode: str, cfg: dict, images: list[bytes] | None = None, max_tokens: int = 4000, image_paths: list | None = None, task: str = "plan") -> str:
+    tier = model_for(task, cfg)
     if mode == "claude-code":
         # Claude Code on this computer, logged in with the user's own Claude subscription — no API key.
         # ANTHROPIC_API_KEY is removed from the environment so it can't silently switch to API billing.
         import subprocess
         env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
-        args = ["claude", "-p", prompt, "--output-format", "json", "--max-turns", "3" if image_paths else "1"]
+        args = ["claude", "-p", prompt, "--output-format", "json", "--model", tier, "--max-turns", "3" if image_paths else "1"]
         if image_paths:
             args[2] = prompt + "\n\nالصور بالترتيب (اقراها بأداة Read):\n" + "\n".join(str(x) for x in image_paths)
             args += ["--allowedTools", "Read"]
@@ -45,7 +51,8 @@ def call(prompt: str, mode: str, cfg: dict, images: list[bytes] | None = None, m
             raise RuntimeError("مفتاح Claude API مش متسجل (ANTHROPIC_API_KEY)")
         content = [{"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": base64.b64encode(b).decode()}} for b in images or []]
         content.append({"type": "text", "text": prompt})
-        body = json.dumps({"model": cfg["planner"]["claudeModel"], "max_tokens": max_tokens, "messages": [{"role": "user", "content": content}]}).encode()
+        api_model = cfg.get("ai", {}).get("apiModels", {}).get(tier, cfg["planner"]["claudeModel"])
+        body = json.dumps({"model": api_model, "max_tokens": max_tokens, "messages": [{"role": "user", "content": content}]}).encode()
         req = urllib.request.Request("https://api.anthropic.com/v1/messages", body, {"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
         with urllib.request.urlopen(req, timeout=300) as r:
             out = json.loads(r.read())
@@ -214,5 +221,5 @@ def run(p: Project, task: str, mode: str, ids: list | None = None, answer: str |
     if task == "review" and mode == "local":
         raise RuntimeError("مراجعة الصور محتاجة موديل بيشوف صور: Claude أو Claude Code أو الصق في شات")
     text = call(b["prompt"], mode, cfg, images=b.get("images") if mode == "claude" else None,
-                image_paths=b.get("paths") if mode == "claude-code" else None, max_tokens=8000 if task == "plan" else 4000)
+                image_paths=b.get("paths") if mode == "claude-code" else None, max_tokens=8000 if task == "plan" else 4000, task=task)
     return apply(p, task, text, mode, ids)

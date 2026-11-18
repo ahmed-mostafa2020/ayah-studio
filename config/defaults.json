@@ -38,5 +38,19 @@
   "online": {
     "publishing": false,
     "linkImport": false
+  },
+  "ai": {
+    "models": {
+      "plan": "sonnet",
+      "review": "sonnet",
+      "hadith": "sonnet",
+      "words": "haiku",
+      "meta": "haiku"
+    },
+    "apiModels": {
+      "opus": "claude-opus-5-5",
+      "sonnet": "claude-sonnet-5-5",
+      "haiku": "claude-haiku-5-5"
+    }
   }
 }
