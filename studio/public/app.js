@@ -19,6 +19,7 @@ const run = (cmd, body = {}) => api(`/p/${encodeURIComponent(S.slug)}/run/${cmd}
 
 const confirmBox = (html, okText = 'موافق') => new Promise((ok) => {
   const d = $('#dlg'); $('#dlgBody').innerHTML = html; $('#dlgOk').textContent = okText;
+  const cp = $('#cp', d); if (cp) cp.onclick = () => { navigator.clipboard?.writeText($('#pp', d).value); toast('اتنسخ'); };
   d.returnValue = ''; d.showModal(); d.onclose = () => ok(d.returnValue === 'ok');
 });
 
@@ -42,6 +43,7 @@ const AI_INFO = {
   hadith: ['تحقق من الأحاديث بالـ AI', 'بيبعت الكلام اللي اتسمع والنص المقترح بس، ويرجّع: هل ده حديث، والنص المعروف، والمصدر، والدرجة. <b>الـ AI ممكن يغلط في الأحاديث</b>، فالنتيجة بتظهر جنب الكارت كاقتراح، والتأكيد بيفضل بإيدك. الأضمن إنك تراجع بنفسك من زرار «ابحث في الدرر السنية».'],
   words: ['اقتراحات للكلمات الصفرا', 'بيبعت نص التفريغ بس، ويقترح تصحيح للكلمات اللي التفريغ مش متأكد منها، بنفس لهجة الشيخ. الاقتراح بيظهر وانت تقبله أو ترفضه.'],
   meta: ['العنوان والوصف والتعليق المثبّت', 'بيبعت نص التفريغ بس، ويقترح عنوان ووصف وسؤال للتعليق المثبّت وهاشتاجات. من غير اسم الشيخ.'],
+  plan: ['حسّن الستوري بورد بالـ AI', 'بيبعت نص التفريغ بس، والموديل بيختار وصفة لكل مشهد ويقترح الهوك والعنوان والوصف والتعليق المثبّت. التقسيم وكروت الآيات والقواعد الشرعية والرسم بيفضلوا في الأداة والفاحص. الستوري بورد الحالي هيتبدل.'],
   review: ['مراجعة الصور بالـ AI', 'بيبعت صور المشاهد مصغّرة، وموديل بيشوف الصور يدوّر على أي حاجة ممكن تتفهم غلط أو تخالف القواعد. الفاحص بيعمل ده ببلاش للحاجات اللي تتحسب، والـ AI بيكمّل اللي محتاج عين.'],
 };
 const aiBox = async (task, onDone) => {
@@ -51,14 +53,31 @@ const aiBox = async (task, onDone) => {
   const [title, desc] = AI_INFO[task];
   el.innerHTML = `<div class="row"><h3 class="grow">✨ ${title} (اختياري)</h3><span class="pill warn">بيستخدم AI</span></div>
     <p class="muted">${desc} ${est ? `التقدير: حوالي <b>${est.total.toLocaleString('ar-EG')}</b> توكن.` : ''}</p>
-    <div class="row"><button class="gold" data-m="claude" ${S.cfg.hasClaudeKey ? '' : 'disabled'}>بـ Claude (أونلاين)</button>
-    ${task === 'review' ? '' : '<button data-m="local">بموديل على جهازك (Ollama)</button>'}
-    ${S.cfg.hasClaudeKey ? '' : '<span class="muted">Claude محتاج ANTHROPIC_API_KEY.</span>'}</div><div class="j"></div>`;
+    <div class="row">
+      <button class="gold" data-m="claude-code" ${S.cfg.hasClaudeCode ? '' : 'disabled'} title="بيستخدم اشتراكك في Claude عن طريق Claude Code على جهازك، من غير مفتاح">بـ Claude Code (اشتراكك)</button>
+      <button data-m="manual" title="تنسخ الطلب وتلصقه في أي شات AI (Claude أو ChatGPT أو Gemini)، وترجع تلصق الرد">انسخ والصق في أي AI</button>
+      <button data-m="claude" ${S.cfg.hasClaudeKey ? '' : 'disabled'}>بمفتاح Claude API</button>
+      ${task === 'review' ? '' : '<button data-m="local">Ollama على جهازك</button>'}</div>
+    ${S.cfg.hasClaudeCode ? '' : '<p class="muted">علشان زرار Claude Code: سطّب Claude Code وسجّل دخول باشتراكك مرة واحدة.</p>'}<div class="j"></div>`;
   el.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => {
     const mode = b.dataset.m;
-    const ok = await confirmBox(`<h3>${title}</h3><p>الخطوة دي بتستخدم AI ${mode === 'claude' ? '(Claude، أونلاين)' : '(Ollama على جهازك)'}.<br>التقدير: حوالي <b>${est?.total ?? '؟'}</b> توكن.</p>`, 'أيوه كمّل');
-    if (!ok) return;
-    const j = await run('ai', {task, mode}).catch((e) => toast(e.message));
+    let answer;
+    if (mode === 'manual') {
+      const prompt = await fetch(`/api/p/${encodeURIComponent(S.slug)}/prompt?task=${task}`).then((r) => r.text());
+      const ok = await confirmBox(`<h3>${title}: انسخ والصق</h3>
+        <p class="muted">1) انسخ الطلب ده والصقه في أي شات AI (claude.ai أو غيره) ${task === 'review' ? 'ومعاه صور المشاهد من فولدر المشروع ' : ''}2) انسخ رده كله والصقه تحت.</p>
+        <textarea id="pp" readonly style="height:140px;font-size:12px">${esc(prompt)}</textarea>
+        <button type="button" id="cp">انسخ الطلب</button>
+        <textarea id="pa" placeholder="الصق رد الـ AI هنا" style="height:140px;margin-top:10px"></textarea>`, 'استخدم الرد');
+      if (!ok) return;
+      answer = $('#pa').value;
+      if (!answer.trim()) return toast('ماتلصقش رد');
+    } else {
+      const where = {claude: 'Claude API بمفتاحك (أونلاين، بيتحسب من رصيد الـ API)', 'claude-code': 'Claude Code باشتراكك (أونلاين، من حدود استخدام اشتراكك)', local: 'Ollama على جهازك (أوفلاين)'}[mode];
+      const ok = await confirmBox(`<h3>${title}</h3><p>الخطوة دي بتستخدم AI: ${where}.<br>التقدير: حوالي <b>${est?.total ?? '؟'}</b> توكن.</p>`, 'أيوه كمّل');
+      if (!ok) return;
+    }
+    const j = await run('ai', {task, mode, answer}).catch((e) => toast(e.message));
     if (!j) return;
     const r = await follow(j, $('.j', el), title);
     if (r.status === 'done') { toast('خلص ✨'); onDone?.(); }
@@ -174,12 +193,7 @@ const TABS = {
           <button id="saveHook">حفظ الهوك</button></div>
         <div class="row" style="margin-top:12px"><button class="primary" id="planRules">اعمل الستوري بورد (من غير AI، ببلاش)</button>
           <span class="muted">بيختار وصفة لكل مشهد بقواعد ثابتة، وانت تغيّر اللي عايزه.</span></div></div>
-      <div class="card ai"><div class="row"><h3 class="grow">✨ حسّن بالـ AI (اختياري)</h3><span class="pill warn">بيستخدم AI</span></div>
-        <p class="muted">بيبعت <b>نص التفريغ بس</b> في طلب واحد، والموديل بيختار وصفة لكل مشهد ويقترح الهوك والعنوان والوصف والتعليق المثبّت. الرسم والقواعد الشرعية بيفضلوا في الأداة والفاحص.
-        ${est ? `التقدير: حوالي <b>${est.total.toLocaleString('ar-EG')}</b> توكن (${est.input.toLocaleString('ar-EG')} إدخال + ${est.output.toLocaleString('ar-EG')} إخراج).` : ''}</p>
-        <div class="row"><button class="gold" id="planClaude" ${hasKey ? '' : 'disabled'}>حسّن بـ Claude (أونلاين)</button>
-          <button id="planLocal">حسّن بموديل على جهازك (Ollama، ببلاش وأبطأ)</button>
-          ${hasKey ? '' : '<span class="muted">علشان تستخدم Claude: شغّل الأداة ومعاها ANTHROPIC_API_KEY.</span>'}</div></div>
+      <div id="planBox"></div>
       <div id="bjob"></div><div id="metaBox"></div>
       ${lint ? `<div class="card"><h3>الفاحص: <span class="pill ${lint.errors.length ? 'err' : 'ok'}">${lint.errors.length} خطأ</span> <span class="pill warn">${lint.warnings.length} تنبيه</span></h3>
         <ul class="lint">${[...lint.errors, ...lint.warnings].slice(0, 30).map((i) => `<li>${i.severity === 'error' ? '✗' : '!'} <b>${esc(i.where)}</b>: ${esc(i.msg)} ${i.fix ? `<span class="muted">← ${esc(i.fix)}</span>` : ''}</li>`).join('')}</ul></div>` : ''}
@@ -197,8 +211,7 @@ const TABS = {
     const pub = await get('publish.json');
     if (pub) $('#metaBox').insertAdjacentHTML('beforeend', `<div class="card"><h3>للنشر</h3><p><b>العنوان:</b> ${esc(pub.title)}</p><p><b>الوصف:</b> ${esc(pub.description)}</p><p><b>التعليق المثبّت:</b> ${esc(pub.pinned)}</p><p class="muted">${esc((pub.hashtags || []).join(' '))}</p></div>`);
     $('#planRules').onclick = () => plan('rules');
-    $('#planClaude').onclick = () => plan('claude');
-    $('#planLocal').onclick = () => plan('local');
+    $('#planBox').append(await aiBox('plan', () => TABS.board()));
     $('#saveHook').onclick = async () => { if (!sb) return; sb.template.hook.text = $('#hook').value.trim(); sb.meta.title = sb.template.hook.text; await put('storyboard.json', sb); toast('الهوك اتحفظ. أعد صورة أول فريم من «الصور»'); };
     if (!sb) return;
     $('#scenes').innerHTML = sb.scenes.filter((s) => s.id !== 'outro').map((s) => {

@@ -381,3 +381,23 @@ def rescene(p: Project, sid: str, recipe: str | None = None, params: dict | None
         ap.setdefault("scenes", {}).pop(sid, None)
         p.write("approvals.json", ap)
     return {"scene": sid, "recipe": rec}
+
+
+def plan_from_answer(p: Project, data: dict) -> dict:
+    """use an AI answer (from any mode, including copy/paste) to build the storyboard."""
+    cfg = load_config(p)
+    tr = p.read("transcript.json")
+    spans = p.read("sacred.json")["spans"] if p.has("sacred.json") else []
+    for w in tr["words"]:
+        w.pop("key", None)
+    ph = phrases(tr)
+    for q in ph:
+        _hints(q)
+    p.write("transcript.json", tr)
+    beats = merge_ai(beats_rules(ph, spans, cfg["planner"]["beatSeconds"]), _from_llm(data, tr))
+    p.write("ai_extra.json", {k: data.get(k) for k in ("title", "description", "pinned", "hook")})
+    if any(data.get(k) for k in ("title", "description", "pinned")):
+        p.write("publish.json", {**(p.read("publish.json") if p.has("publish.json") else {}), **{k: data[k] for k in ("title", "description", "pinned") if data.get(k)}})
+    sb = compose(p, beats, data.get("hook"), data.get("pinned"), cfg)
+    p.write("storyboard.json", sb)
+    return {"mode": "ai", "scenes": len(sb["scenes"]), "hook": sb["template"]["hook"]["text"]}

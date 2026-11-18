@@ -16,7 +16,8 @@ def main(argv=None):
     s = sub.add_parser("new"); s.add_argument("slug"); s.add_argument("src")
     s = sub.add_parser("rescene"); s.add_argument("slug"); s.add_argument("scene"); s.add_argument("--recipe"); s.add_argument("--params")
     s = sub.add_parser("ai"); s.add_argument("task", choices=["hadith", "words", "meta", "review", "plan"]); s.add_argument("slug")
-    s.add_argument("--mode", choices=["claude", "local"], default="claude"); s.add_argument("--estimate", action="store_true"); s.add_argument("--ids")
+    s.add_argument("--mode", choices=["claude", "claude-code", "local", "manual"], default="claude"); s.add_argument("--estimate", action="store_true"); s.add_argument("--ids")
+    s.add_argument("--prompt", action="store_true", help="print the prompt to paste into any AI chat"); s.add_argument("--answer", help="file with the AI reply (manual mode)")
     s = sub.add_parser("mix"); s.add_argument("slug"); s.add_argument("--to", type=float)
     s = sub.add_parser("srt"); s.add_argument("slug")
     s = sub.add_parser("recipes"); s.add_argument("slug", nargs="?", default="_")
@@ -57,10 +58,11 @@ def main(argv=None):
         from . import ai
         if a.estimate:
             return _out(ai.estimate(p, a.task))
-        if a.task == "plan":
-            from .planner import plan
-            return _out(plan(p, a.mode))
-        _out(ai.run(p, a.task, a.mode, a.ids.split(",") if a.ids else None))
+        ids = a.ids.split(",") if a.ids else None
+        if a.prompt:
+            return print(ai.build(p, a.task, ids)["prompt"])
+        answer = open(a.answer, encoding="utf-8").read() if a.answer else None
+        _out(ai.run(p, a.task, a.mode, ids, answer))
     elif a.cmd == "mix":
         from .mix import mix
         _out(mix(p, a.to))

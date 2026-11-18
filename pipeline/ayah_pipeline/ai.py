@@ -20,7 +20,25 @@ CHARS_PER_TOKEN = 2.6
 IMG_TOKENS = 420  # a 360×640 still ≈ (w*h)/750 + overhead
 
 
-def call(prompt: str, mode: str, cfg: dict, images: list[bytes] | None = None, max_tokens: int = 4000) -> str:
+def claude_code_available() -> bool:
+    import shutil
+    return shutil.which("claude") is not None
+
+
+def call(prompt: str, mode: str, cfg: dict, images: list[bytes] | None = None, max_tokens: int = 4000, image_paths: list | None = None) -> str:
+    if mode == "claude-code":
+        # Claude Code on this computer, logged in with the user's own Claude subscription — no API key.
+        # ANTHROPIC_API_KEY is removed from the environment so it can't silently switch to API billing.
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if k not in ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")}
+        args = ["claude", "-p", prompt, "--output-format", "json", "--max-turns", "3" if image_paths else "1"]
+        if image_paths:
+            args[2] = prompt + "\n\nالصور بالترتيب (اقراها بأداة Read):\n" + "\n".join(str(x) for x in image_paths)
+            args += ["--allowedTools", "Read"]
+        r = subprocess.run(args, capture_output=True, text=True, env=env, timeout=900)
+        if r.returncode != 0:
+            raise RuntimeError("Claude Code: " + (r.stderr or r.stdout)[-400:])
+        return json.loads(r.stdout).get("result", "")
     if mode == "claude":
         key = os.environ.get("ANTHROPIC_API_KEY")
         if not key:
@@ -132,22 +150,40 @@ def estimate(p: Project, task: str) -> dict:
     return {"task": task, "input": round(n_in), "output": round(n_out), "total": round(n_in + n_out)}
 
 
-def run(p: Project, task: str, mode: str, ids: list | None = None) -> dict:
-    cfg = load_config(p)
+def build(p: Project, task: str, ids: list | None = None) -> dict:
+    """the exact prompt for a task (used by every mode, including copy/paste into any AI chat)."""
+    tr = p.read("transcript.json")
+    if task == "hadith":
+        spans = [s for s in p.read("sacred.json")["spans"] if s["type"] == "hadith" and (not ids or s["id"] in ids)]
+        return {"prompt": _hadith_prompt(spans)}
+    if task == "words":
+        return {"prompt": _words_prompt(tr)}
+    if task == "meta":
+        return {"prompt": _meta_prompt(tr, p.read("storyboard.json") if p.has("storyboard.json") else None)}
+    if task == "review":
+        shots, mean, imgs = _review_inputs(p, ids)
+        return {"prompt": _review_prompt([s["id"] for s in shots], mean), "images": imgs,
+                "paths": [str(p.dir / "stills" / f"{s['id']}.png") for s in shots]}
+    if task == "plan":
+        from .planner import build_prompt
+        return {"prompt": build_prompt(tr)}
+    raise ValueError(task)
+
+
+def apply(p: Project, task: str, text: str, mode: str, ids: list | None = None) -> dict:
+    """parse a model's answer (from any mode) and store it as suggestions — nothing is confirmed automatically."""
+    res = parse_json(text)
     if task == "hadith":
         sac = p.read("sacred.json")
-        spans = [s for s in sac["spans"] if s["type"] == "hadith" and (not ids or s["id"] in ids)]
-        res = parse_json(call(_hadith_prompt(spans), mode, cfg))
         by = {x["id"]: x for x in res.get("items", [])}
         for s in sac["spans"]:
             if s["id"] in by:
-                s["ai_check"] = {**by[s["id"]], "by": mode}  # shown next to the card; never auto-confirms
+                s["ai_check"] = {**by[s["id"]], "by": mode}
                 s["confirmed"] = False
         p.write("sacred.json", sac)
         return {"checked": len(by)}
     if task == "words":
         tr = p.read("transcript.json")
-        res = parse_json(call(_words_prompt(tr), mode, cfg))
         n = 0
         for x in res.get("items", []):
             if 0 <= x.get("i", -1) < len(tr["words"]) and x.get("suggest") and x["suggest"] != tr["words"][x["i"]]["w"]:
@@ -156,16 +192,27 @@ def run(p: Project, task: str, mode: str, ids: list | None = None) -> dict:
         p.write("transcript.json", tr)
         return {"suggestions": n}
     if task == "meta":
-        tr = p.read("transcript.json")
-        sb = p.read("storyboard.json") if p.has("storyboard.json") else None
-        res = parse_json(call(_meta_prompt(tr, sb), mode, cfg, max_tokens=1200))
         p.write("publish.json", {**(p.read("publish.json") if p.has("publish.json") else {}), **res, "by": mode})
         return res
     if task == "review":
-        if mode != "claude":
-            raise RuntimeError("مراجعة الصور محتاجة موديل بيشوف صور (Claude)")
-        shots, mean, imgs = _review_inputs(p, ids)
-        res = parse_json(call(_review_prompt([s["id"] for s in shots], mean), mode, cfg, images=imgs))
         p.write("ai_review.json", res)
         return {"reviewed": len(res.get("items", []))}
+    if task == "plan":
+        from .planner import plan_from_answer
+        return plan_from_answer(p, res)
     raise ValueError(task)
+
+
+def run(p: Project, task: str, mode: str, ids: list | None = None, answer: str | None = None) -> dict:
+    """mode: claude (API key) · claude-code (your subscription via Claude Code) · local (Ollama) · manual (answer pasted from any AI chat)."""
+    cfg = load_config(p)
+    b = build(p, task, ids)
+    if mode == "manual":
+        if not answer:
+            raise RuntimeError("الصق رد الـ AI الأول")
+        return apply(p, task, answer, mode, ids)
+    if task == "review" and mode == "local":
+        raise RuntimeError("مراجعة الصور محتاجة موديل بيشوف صور: Claude أو Claude Code أو الصق في شات")
+    text = call(b["prompt"], mode, cfg, images=b.get("images") if mode == "claude" else None,
+                image_paths=b.get("paths") if mode == "claude-code" else None, max_tokens=8000 if task == "plan" else 4000)
+    return apply(p, task, text, mode, ids)

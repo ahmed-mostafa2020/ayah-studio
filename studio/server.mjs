@@ -89,7 +89,8 @@ createServer(async (req, res) => {
     if (parts[1] === 'jobs' && parts[2]) return send(res, 200, jobs.get(parts[2]) ?? {status: 'missing'});
     if (parts[1] === 'config' && req.method === 'GET') {
       const cfg = JSON.parse(readFileSync(join(ROOT, 'config/defaults.json'), 'utf8'));
-      return send(res, 200, {...cfg, hasClaudeKey: Boolean(process.env.ANTHROPIC_API_KEY), offline: ENV.HF_HUB_OFFLINE === '1'});
+      const hasClaudeCode = await new Promise((ok) => { const p = spawn('claude', ['--version'], {shell: process.platform === 'win32'}); p.on('error', () => ok(false)); p.on('close', (c) => ok(c === 0)); });
+      return send(res, 200, {...cfg, hasClaudeKey: Boolean(process.env.ANTHROPIC_API_KEY), hasClaudeCode, offline: ENV.HF_HUB_OFFLINE === '1'});
     }
 
     // /api/projects
@@ -144,7 +145,12 @@ createServer(async (req, res) => {
             [...node(join(ROOT, 'engine/stills.mjs'), slug, `--scenes=${body.scene}`)]],
           lint: () => [[PY, ['-m', 'ayah_pipeline', 'lint', slug, '--stage', body.stage === 'render' ? 'render' : 'stills'], {allowFail: true}]],
           stills: () => [[PY, ['-m', 'ayah_pipeline', 'lint', slug], {allowFail: true}], node(join(ROOT, 'engine/stills.mjs'), slug, ...(body.scenes ? [`--scenes=${body.scenes.join(',')}`] : []))],
-          ai: () => [[PY, ['-m', 'ayah_pipeline', 'ai', body.task, slug, '--mode', body.mode === 'local' ? 'local' : 'claude', ...(body.ids ? ['--ids', body.ids.join(',')] : [])]]],
+          ai: () => {
+            const mode = ['claude', 'claude-code', 'local', 'manual'].includes(body.mode) ? body.mode : 'claude';
+            const extra = [];
+            if (mode === 'manual') { const f = join(d, 'ai_answer.txt'); writeFileSync(f, String(body.answer ?? '')); extra.push('--answer', f); }
+            return [[PY, ['-m', 'ayah_pipeline', 'ai', body.task, slug, '--mode', mode, ...(body.ids ? ['--ids', body.ids.join(',')] : []), ...extra]]];
+          },
           render: () => body.to
             ? [node(join(ROOT, 'engine/render.mjs'), slug, `--to=${Math.max(5, Math.min(120, Number(body.to) || 20))}`)]  // preview: first N seconds
             : [[PY, ['-m', 'ayah_pipeline', 'lint', slug, '--stage', 'render']], node(join(ROOT, 'engine/render.mjs'), slug)],
@@ -152,6 +158,11 @@ createServer(async (req, res) => {
         if (!steps) return send(res, 404, {error: 'unknown command'});
         if ((cmd === 'ai' || cmd === 'plan') && body.mode === 'claude' && !process.env.ANTHROPIC_API_KEY) return send(res, 400, {error: 'مفتاح Claude API مش متسجل (ANTHROPIC_API_KEY)'});
         return send(res, 200, runJob(cmd, steps()));
+      }
+      if (what === 'prompt') {
+        const task = url.searchParams.get('task') ?? 'plan';
+        const out = await new Promise((ok) => { const p = spawn(...py('ai', task, slug, '--prompt'), {cwd: ROOT, env: ENV}); let o = ''; p.stdout.on('data', (x) => (o += x)); p.on('close', () => ok(o)); });
+        return send(res, 200, out, 'text/plain; charset=utf-8');
       }
       if (what === 'estimate') {
         const task = url.searchParams.get('task') ?? 'plan';
