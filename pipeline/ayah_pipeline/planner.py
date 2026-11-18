@@ -80,6 +80,7 @@ def beats_rules(ph: list, sacred: list, beat: float) -> list:
                  "meaning": " ".join(w["w"] for w in words)}
             b.update(_hints(words))
             b["suggest"] = [[r, p] for r, p in R.suggest(words)]
+            b["keyt"] = next((w["t0"] for w in words if w.get("key")), None)
             sid = next((w["sacred"] for w in words if w.get("sacred")), None)
             if sid:
                 b["sacred"] = sid
@@ -202,7 +203,9 @@ def compose_scene(k, b, spans, women):
         if k == 0 and rec not in ("ages",):
             rec, params = "present", {}
     sc["recipe"], sc["params"], sc["suggest"], sc["flip"] = rec, params, b.get("suggest", []), b.get("flip", False)
-    built = R.compose(rec, params, t0, t1, flip=b.get("flip", False), mood=b.get("mood"))
+    keyt = b.get("keyt")
+    built = R.compose(rec, params, t0, t1, flip=b.get("flip", False), mood=b.get("mood"), keyt=keyt)
+    sc["keyt"] = keyt
     for kname in ("characters", "elements", "motion", "camera", "lightReason"):
         if kname in built:
             sc[kname] = built[kname]
@@ -286,8 +289,11 @@ def compose(p: Project, beats: list, hook: str | None, pinned: str | None, cfg: 
                     if m["prop"] == "x" and m["phase"] == "move":
                         m["from"], m["to"] = max(480, m["from"]), max(480, m["to"])
                 for c in sc["characters"]:
-                    if c.get("target") and c.get("view") == "back":
+                    if c.get("target") and c.get("pose") == "point":
                         c["aim"] = round(G.aim_to(c, next(e for e in sc["elements"] if e["id"] == c["target"])))
+                        for m in sc["motion"]:
+                            if m["target"] == c["id"] and m["prop"] == "aim":
+                                m["to"] = c["aim"]
                     if c.get("shadow"):
                         el = next((e for e in sc["elements"] if e["id"] == c["shadow"].get("toward")), None)
                         if el:
@@ -369,7 +375,7 @@ def rescene(p: Project, sid: str, recipe: str | None = None, params: dict | None
     sc = next(s for s in sb["scenes"] if s["id"] == sid)
     rec = recipe or sc.get("recipe", "present")
     prm = params if params is not None else sc.get("params", {})
-    built = R.compose(rec, prm, sc["start"], sc["end"], flip=sc.get("flip", False), mood=sc.get("background", {}).get("mood"))
+    built = R.compose(rec, prm, sc["start"], sc["end"], flip=sc.get("flip", False), mood=sc.get("background", {}).get("mood"), keyt=sc.get("keyt"))
     for k in ("characters", "elements", "motion", "camera", "lightReason", "background"):
         sc.pop(k, None) if k in ("camera", "lightReason") else None
         if k in built:

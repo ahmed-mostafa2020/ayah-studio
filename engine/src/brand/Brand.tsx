@@ -45,7 +45,7 @@ export type View = 'front' | 'back' | 'side';
 export const Person: React.FC<{x: number; y: number; look: Look; pose?: Pose; light?: number; dim?: number; t?: number; flip?: boolean; view?: View; aim?: number}> =
   ({x, y, look, pose = 'stand', light = 0, dim = 0, t = 0, flip, view = 'front', aim}) => {
   if (view === 'back') return <PersonBack x={x} y={y} look={look} pose={pose} light={light} t={t} flip={flip} aim={aim} />;
-  if (view === 'side') return <PersonSide x={x} y={y} look={look} pose={pose} light={light} t={t} flip={flip} />;
+  if (view === 'side') return <PersonSide x={x} y={y} look={look} pose={pose} light={light} t={t} flip={flip} aim={aim} />;
   const s = look.s ?? 1;
   const br = Math.sin(t * 2) * 1.5;
   const sit = pose === 'sit';
@@ -199,7 +199,7 @@ const PersonBack: React.FC<{x: number; y: number; look: Look; pose: Pose; light:
 };
 
 // ---------- side view (profile facing right; flip to face left). Featureless: beard silhouette only ----------
-const PersonSide: React.FC<{x: number; y: number; look: Look; pose: Pose; light: number; t: number; flip?: boolean}> = ({x, y, look, pose, light, t, flip}) => {
+const PersonSide: React.FC<{x: number; y: number; look: Look; pose: Pose; light: number; t: number; flip?: boolean; aim?: number}> = ({x, y, look, pose, light, t, flip, aim}) => {
   const s = look.s ?? 1;
   const walking = pose === 'walk';
   const step = walking ? Math.sin(t * 5) : 0;
@@ -207,7 +207,8 @@ const PersonSide: React.FC<{x: number; y: number; look: Look; pose: Pose; light:
   const cloak = look.cloak ?? look.robe;
   const lean = pose === 'pull' ? SIDE_PULL.lean : pose === 'sad' ? 6 : pose === 'point' ? 8 : walking ? 4 : pose === 'happy' ? -14 : 0;
   const head = pose === 'sad' ? 24 : 0;
-  const armNear = pose === 'pull' ? SIDE_PULL.near : pose === 'point' ? -88 : pose === 'happy' ? -150 : pose === 'dua' ? -70 : walking ? step * 26 : 0;
+  // aim: degrees above horizontal toward the facing side — the near arm points exactly at the target
+  const armNear = aim !== undefined ? -(90 + aim) - lean : pose === 'pull' ? SIDE_PULL.near : pose === 'point' ? -88 : pose === 'happy' ? -150 : pose === 'dua' ? -70 : walking ? step * 26 : 0;
   const armFar = pose === 'pull' ? SIDE_PULL.far : pose === 'happy' ? -150 : pose === 'dua' ? -70 : walking ? -step * 26 : 0;
   return (
     <g transform={`translate(${x} ${y}) scale(${flip ? -s : s} ${s})`}>

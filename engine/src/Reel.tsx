@@ -7,6 +7,17 @@ import type {Caption, Character, Element, Motion, Scene, Storyboard} from './typ
 
 const W = 1080, H = 1920;
 const TOP = new Set(['thought', 'xmark', 'badge']);
+// gentle idle motion per element (background layer of motion — nothing on screen is ever frozen)
+const IDLE: Record<string, (t: number) => string> = {
+  thought: (t) => `translate(0 ${Math.sin(t * 1.3) * 7})`,
+  lantern: (t) => `rotate(${Math.sin(t * 1.1) * 3} 0 -130)`,
+  coins: (t) => `scale(${1 + Math.sin(t * 2.2) * 0.012})`,
+  goldvalley: (t) => `scale(${1 + Math.sin(t * 2) * 0.01})`,
+  badge: (t) => `translate(0 ${Math.sin(t * 1.6) * 4})`,
+  icon: (t) => `rotate(${Math.sin(t * 0.9) * 4} 0 -70)`,
+  sign: (t) => `rotate(${Math.sin(t * 0.7) * 0.8} 0 0)`,
+  plane: (t) => `translate(${Math.sin(t * 0.6) * 18} ${Math.sin(t * 1.1) * 6})`,
+};
 const EASE = {out: Easing.bezier(0.33, 1, 0.68, 1), in: Easing.bezier(0.32, 0, 0.67, 0), inOut: Easing.bezier(0.65, 0, 0.35, 1), linear: Easing.linear, spring: Easing.bezier(0.33, 1, 0.68, 1)};
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
@@ -14,7 +25,7 @@ export type SacredSpan = {id: string; type: string; text?: string; ref?: string;
 export type ReelProps = {storyboard: Storyboard; sacred: SacredSpan[]; audio?: string; still?: boolean};
 
 // ---------- motion engine ----------
-type Anim = {dx: number; dy: number; scale: number; opacity: number; x?: number; reach?: number; light: number};
+type Anim = {dx: number; dy: number; scale: number; opacity: number; x?: number; reach?: number; light: number; aim?: number; lightAbs?: number; y?: number};
 const animate = (motion: Motion[], target: string, t: number): Anim => {
   const a: Anim = {dx: 0, dy: 0, scale: 1, opacity: 1, light: 1};
   for (const m of motion) {
@@ -23,14 +34,14 @@ const animate = (motion: Motion[], target: string, t: number): Anim => {
     const v = interpolate(t, [m.start, m.start + Math.max(0.01, m.dur)], [m.from, m.to], {...clamp, easing: EASE[m.ease] ?? EASE.out});
     if (m.prop === 'y') a.dy += v; else if (m.prop === 'x') { if (m.phase === 'move') a.x = v; else a.dx += v; }
     else if (m.prop === 'scale') a.scale *= v; else if (m.prop === 'opacity') a.opacity *= v;
-    else if (m.prop === 'reach') a.reach = v; else if (m.prop === 'light') a.light *= v;
+    else if (m.prop === 'reach') a.reach = v; else if (m.prop === 'light') { a.light *= v; a.lightAbs = v; } else if (m.prop === 'aim') a.aim = v;
   }
   return a;
 };
 
 // ---------- background: cream paper + faint Islamic star pattern, mood tint ----------
 const MOOD: Record<string, string> = {calm: 'rgba(175,205,230,0.10)', warm: 'rgba(243,210,122,0.14)', cold: 'rgba(108,116,130,0.22)', dark: 'rgba(62,50,80,0.30)'};
-const Paper: React.FC<{mood?: string; kind?: string; light: number}> = ({mood = 'calm', kind = 'paper', light}) => (
+const Paper: React.FC<{mood?: string; kind?: string; light: number; t: number}> = ({mood = 'calm', kind = 'paper', light, t}) => (
   <AbsoluteFill style={{filter: `brightness(${light})`}}>
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
       <defs>
@@ -46,6 +57,13 @@ const Paper: React.FC<{mood?: string; kind?: string; light: number}> = ({mood = 
       <linearGradient id="sand" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#F2CB97" /><stop offset="1" stopColor="#E7AF77" /></linearGradient>
       <rect y={1500} width={W} height={420} fill="url(#sand)" />
       <rect y={1500} width={W} height={6} fill="#fff" opacity={0.35} />
+      <g opacity={0.35}>
+        <path d={`M${-200 + (t * 6) % 200} 1500 Q 150 1330 420 1450 T 980 1420 T 1500 1460 V1500 Z`} fill="#E7CFA6" />
+        <path d={`M${-300 + (t * 3) % 300} 1500 Q 250 1380 560 1470 T 1200 1440 T 1700 1480 V1500 Z`} fill="#DDBF8F" opacity={0.7} />
+      </g>
+      {[0, 1, 2].map((i) => { const cx = ((i * 420 + t * (14 + i * 5)) % 1500) - 200; return <ellipse key={i} cx={cx} cy={420 + i * 170} rx={110 + i * 20} ry={26} fill="#fff" opacity={0.45} />; })}
+      {Array.from({length: 14}).map((_, i) => { const y = 1450 - ((t * (22 + (i % 4) * 7) + i * 97) % 760); const x = (i * 83 + Math.sin(t * 0.7 + i) * 20) % 1080;
+        return <circle key={i} cx={x} cy={y} r={2.5 + (i % 3)} fill={mood === 'warm' || kind === 'dawn' ? '#F3D27A' : '#fff'} opacity={0.5} />; })}
       <rect width={W} height={H} fill={MOOD[mood] ?? MOOD.calm} />
     </svg>
   </AbsoluteFill>
@@ -76,14 +94,18 @@ const CharacterView: React.FC<{c: Character; t: number; a: Anim; reach?: number}
   const look = {...lookFor(c.kind, c.mood), s: (lookFor(c.kind, c.mood).s ?? 1) * (c.scale ?? 1)};
   const x = (a.x ?? c.x) + a.dx;
   const dir = c.flip ? -1 : 1;
+  const seed = (c.id.charCodeAt(0) % 7) * 0.9;
+  const walking = c.pose === 'walk';
+  const breathe = walking ? 0 : Math.sin(t * 1.7 + seed) * 2.2;           // idle life: breathing
+  const sway = walking ? Math.sin(t * 5) * 1.2 : Math.sin(t * 0.8 + seed) * 0.9; // and a slow weight shift
   const pose = c.pose === 'sujood' || c.pose === 'pray' ? null : c.pose;
   return (
     <g opacity={a.opacity}>
       {c.shadow && <NafsShadow x={x} y={c.y} reach={reach ?? c.shadow.reach} dir={dir as 1 | -1} t={t} s={look.s} />}
-      <g transform={`translate(0 ${a.dy}) translate(${x} ${c.y}) scale(${a.scale}) translate(${-x} ${-c.y})`}>
+      <g transform={`translate(0 ${a.dy + breathe}) translate(${x} ${c.y}) scale(${a.scale}) rotate(${sway}) translate(${-x} ${-c.y})`}>
         {pose === null
           ? <PersonSujood x={x} y={c.y} look={look} flip={c.flip} light={c.light ?? 0} />
-          : <Person x={x} y={c.y} look={look} pose={pose as any} view={c.view} flip={c.flip} aim={c.aim} light={c.light ?? 0} dim={c.dim ?? 0} t={t} />}
+          : <Person x={x} y={c.y} look={look} pose={pose as any} view={c.view} flip={c.flip} aim={a.aim ?? c.aim} light={a.lightAbs ?? c.light ?? 0} dim={c.dim ?? 0} t={t} />}
       </g>
     </g>
   );
@@ -181,15 +203,16 @@ const SceneView: React.FC<{sc: Scene; t: number; sacred: SacredSpan[]}> = ({sc, 
   const bg = animate(sc.motion, 'bg', t);
   const card = sc.elements.find((e) => e.type === 'ayah_card' || e.type === 'hadith_card');
   return (
-    <AbsoluteFill style={{opacity: op}}>
-      <Paper mood={sc.background.mood} kind={sc.background.kind} light={bg.light} />
+    <AbsoluteFill style={{opacity: op, transform: `translateX(${(1 - op) * 50 * (Number(sc.id.replace(/\D/g, '')) % 2 ? 1 : -1)}px)`}}>
+      <Paper mood={sc.background.mood} kind={sc.background.kind} light={bg.light} t={t} />
       <AbsoluteFill style={{WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, transparent 560px, #000 660px)'}}>
         <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`}>
           <BrandDefs />
           <g transform={`translate(540 1300) scale(${z}) translate(${-cx} ${-cy}) translate(540 1560) scale(1.18) translate(-540 -1560)`}>
             {sc.elements.filter((e) => !e.type.endsWith('_card') && e.type !== 'rope' && !TOP.has(e.type)).map((e) => {
               const a = animate(sc.motion, e.id, t);
-              return <g key={e.id} opacity={a.opacity} transform={`translate(${(a.x ?? e.x) + a.dx} ${e.y + a.dy}) scale(${(e.scale ?? 1) * a.scale})`}><ElementShape e={e} t={t} progress={a.light} /></g>;
+              const idle = IDLE[e.type]?.(t) ?? '';
+              return <g key={e.id} opacity={a.opacity} transform={`translate(${(a.x ?? e.x) + a.dx} ${e.y + a.dy}) scale(${(e.scale ?? 1) * a.scale}) ${idle}`}><ElementShape e={e} t={t} progress={a.light} /></g>;
             })}
             {sc.characters.map((c) => {
               const a = animate(sc.motion, c.id, t);
@@ -198,7 +221,8 @@ const SceneView: React.FC<{sc: Scene; t: number; sacred: SacredSpan[]}> = ({sc, 
             })}
             {sc.elements.filter((e) => TOP.has(e.type)).map((e) => {
               const a = animate(sc.motion, e.id, t);
-              return <g key={e.id} opacity={a.opacity} transform={`translate(${e.x + a.dx} ${e.y + a.dy}) scale(${(e.scale ?? 1) * a.scale})`}><ElementShape e={e} t={t} progress={a.light} /></g>;
+              const idle = IDLE[e.type]?.(t) ?? '';
+              return <g key={e.id} opacity={a.opacity} transform={`translate(${e.x + a.dx} ${e.y + a.dy}) scale(${(e.scale ?? 1) * a.scale}) ${idle}`}><ElementShape e={e} t={t} progress={a.light} /></g>;
             })}
           </g>
         </svg>

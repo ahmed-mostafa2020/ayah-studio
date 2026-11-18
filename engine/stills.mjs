@@ -38,5 +38,6 @@ for (const s of shots) {
   console.error(`✓ ${s.id} @${s.t.toFixed(2)}s`);
 }
 writeFileSync(join(out, 'index.json'), JSON.stringify(shots, null, 2));
-const r = spawnSync(process.platform === 'win32' ? 'python' : 'python3', [join(ROOT, 'pipeline/ayah_pipeline/contact.py'), out], {stdio: 'inherit'});
+const VENV_PY = [join(ROOT, '.venv', 'Scripts', 'python.exe'), join(ROOT, '.venv', 'bin', 'python')].find(existsSync);
+const r = spawnSync(process.env.AYAH_PYTHON || VENV_PY || (process.platform === 'win32' ? 'python' : 'python3'), [join(ROOT, 'pipeline/ayah_pipeline/contact.py'), out], {stdio: 'inherit'});
 process.exit(r.status ?? 0);

@@ -19,7 +19,8 @@ const sacred = existsSync(join(P, 'sacred.json')) ? JSON.parse(readFileSync(join
 const to = Number(arg('to', 0)) || null;
 const chunk = Number(arg('chunk', cfg.render.chunkFrames));
 const browserExecutable = process.env.AYAH_CHROME || ['/usr/bin/google-chrome', 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(existsSync) || null;
-const PY = process.env.AYAH_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const VENV_PY = [join(ROOT, '.venv', 'Scripts', 'python.exe'), join(ROOT, '.venv', 'bin', 'python')].find(existsSync);
+const PY = process.env.AYAH_PYTHON || VENV_PY || (process.platform === 'win32' ? 'python' : 'python3');
 const env = {...process.env, PYTHONPATH: join(ROOT, 'pipeline'), PYTHONIOENCODING: 'utf-8'};
 const sh = (cmd, args) => { const r = spawnSync(cmd, args, {stdio: ['ignore', 'pipe', 'inherit'], env}); if (r.status) throw new Error(`${cmd} failed`); return r.stdout?.toString() ?? ''; };
 

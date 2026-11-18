@@ -266,6 +266,29 @@ const TABS = {
     })));
   },
 
+  async settings() {
+    S.cfg = await api('/config');
+    const u = S.cfg.user || {};
+    const v = (path, d) => path.split('.').reduce((o, k) => (o ?? {})[k], u) ?? d;
+    view.innerHTML = `<div class="card"><h2>الإعدادات</h2>
+      <table>
+        <tr><td>رسم الستات</td><td><label><input type="checkbox" id="women" ${v('shariah.womenAllowed', S.cfg.shariah.womenAllowed) ? 'checked' : ''}/> مسموح (الافتراضي: مقفول زي PLAYBOOK النشر؛ تقدر تفتحه لفيديو معيّن بس)</label></td></tr>
+        <tr><td>أقصى سكتة قبل القص</td><td><input id="sil" type="number" step="0.1" min="0.3" max="3" value="${v('audio.silenceMax', S.cfg.audio.silenceMax)}"/> ثانية <span class="muted">(بيتطبق بس لو مفيش خلفية صوتية)</span></td></tr>
+        <tr><td>مدة المشهد التقريبية</td><td><input id="beat" type="number" step="0.2" min="2.5" max="7" value="${v('planner.beatSeconds', S.cfg.planner.beatSeconds)}"/> ثانية</td></tr>
+        <tr><td>جملة المشاركة</td><td><input id="share" class="grow" style="width:100%" value="${esc(v('channel.shareLine', S.cfg.channel.shareLine))}"/></td></tr>
+        <tr><td>موديل Ollama</td><td><input id="oll" value="${esc(v('planner.ollamaModel', S.cfg.planner.ollamaModel))}"/></td></tr>
+        <tr><td>مفتاح Claude API (اختياري)</td><td><input id="key" type="password" style="width:100%" placeholder="sk-ant-..." value="${esc(v('ai.claudeKey', ''))}"/>
+          <div class="muted">بيتحفظ في config/user.json على جهازك بس (مش متغير عام في النظام، علشان مايأثرش على اشتراكك في Claude Code). مش محتاجه لو هتستخدم «Claude Code باشتراكك» أو «انسخ والصق».</div></td></tr>
+        <tr><td>Claude Code</td><td>${S.cfg.hasClaudeCode ? '✓ متسطّب، وزرار «اشتراكك» شغال' : '✗ مش متسطّب. سطّبه من claude.com/code وسجّل دخول باشتراكك مرة واحدة'}</td></tr>
+      </table><div class="row" style="margin-top:12px"><button class="primary" id="saveS">حفظ</button></div></div>`;
+    $('#saveS').onclick = async () => {
+      await api('/settings', {method: 'PUT', body: JSON.stringify({
+        shariah: {womenAllowed: $('#women').checked}, audio: {silenceMax: +$('#sil').value}, planner: {beatSeconds: +$('#beat').value, ollamaModel: $('#oll').value.trim()},
+        channel: {...S.cfg.channel, shareLine: $('#share').value.trim()}, ai: {claudeKey: $('#key').value.trim()}})});
+      S.cfg = await api('/config'); toast('اتحفظ');
+    };
+  },
+
   async render() {
     if (!needProject()) return;
     const j = await run('lint', {stage: 'render'});

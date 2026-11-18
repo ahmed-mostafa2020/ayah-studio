@@ -23,7 +23,7 @@
     "mode": "local",
     "ollamaModel": "qwen2.5:7b-instruct",
     "claudeModel": "claude-sonnet-5-5",
-    "beatSeconds": 5
+    "beatSeconds": 3.6
   },
   "render": {
     "chunkFrames": 480,

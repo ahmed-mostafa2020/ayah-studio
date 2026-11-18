@@ -40,9 +40,11 @@ def overlap(a, b, pad=0):
 
 
 def shoulder(c: dict):
-    """right shoulder of a back-view person (the pointing arm)."""
+    """the pointing shoulder: right shoulder in back view, the near shoulder in side view (Brand.tsx pivots)."""
     s = c.get("scale", 1)
     sign = -1 if c.get("flip") else 1
+    if c.get("view") == "side":
+        return c["x"] + sign * 6 * s, c["y"] + (TOP + 12) * s
     return c["x"] + sign * 44 * s, c["y"] + (TOP + 8) * s
 
 

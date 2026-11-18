@@ -10,9 +10,13 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECTS = process.env.AYAH_PROJECTS ?? join(ROOT, 'projects');
 const PORT = Number(process.env.PORT ?? 4747);
 const HOST = process.env.AYAH_HOST ?? '127.0.0.1'; // set 0.0.0.0 only when you run it on your own server
-const PY = process.env.AYAH_PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+const VENV_PY = [join(ROOT, '.venv', 'Scripts', 'python.exe'), join(ROOT, '.venv', 'bin', 'python')].find(existsSync);
+const PY = process.env.AYAH_PYTHON || VENV_PY || (process.platform === 'win32' ? 'python' : 'python3');
 const ENV = {...process.env, PYTHONPATH: join(ROOT, 'pipeline'), PYTHONIOENCODING: 'utf-8', HF_HUB_DISABLE_XET: '1',
   ...(existsSync(join(ROOT, 'models')) && !process.env.AYAH_ONLINE ? {HF_HUB_OFFLINE: '1'} : {})};
+const USER_CFG = join(ROOT, 'config', 'user.json');
+const userCfg = () => { try { return JSON.parse(readFileSync(USER_CFG, 'utf8')); } catch { return {}; } };
+const claudeKey = () => userCfg().ai?.claudeKey || process.env.ANTHROPIC_API_KEY || '';
 const EDITABLE = new Set(['transcript.json', 'sacred.json', 'storyboard.json', 'approvals.json', 'settings.json', 'goal.json']);
 const MIME = {'.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.woff2': 'font/woff2', '.svg': 'image/svg+xml'};
@@ -30,7 +34,7 @@ const runJob = (label, steps) => {
   (async () => {
     for (const [cmd, args, opts] of steps) {
       const code = await new Promise((ok) => {
-        const p = spawn(cmd, args, {cwd: ROOT, env: {...ENV, ...(opts?.env ?? {})}});
+        const p = spawn(cmd, args, {cwd: ROOT, env: {...ENV, ...(claudeKey() ? {ANTHROPIC_API_KEY: claudeKey()} : {}), ...(opts?.env ?? {})}});
         const eat = (b) => {
           const s = b.toString();
           job.log = (job.log + s).slice(-6000);
@@ -90,7 +94,16 @@ createServer(async (req, res) => {
     if (parts[1] === 'config' && req.method === 'GET') {
       const cfg = JSON.parse(readFileSync(join(ROOT, 'config/defaults.json'), 'utf8'));
       const hasClaudeCode = await new Promise((ok) => { const p = spawn('claude', ['--version'], {shell: process.platform === 'win32'}); p.on('error', () => ok(false)); p.on('close', (c) => ok(c === 0)); });
-      return send(res, 200, {...cfg, hasClaudeKey: Boolean(process.env.ANTHROPIC_API_KEY), hasClaudeCode, offline: ENV.HF_HUB_OFFLINE === '1'});
+      return send(res, 200, {...cfg, hasClaudeKey: Boolean(claudeKey()), user: {...userCfg(), ai: {...(userCfg().ai ?? {}), claudeKey: claudeKey() ? '••••' + claudeKey().slice(-4) : ''}}, hasClaudeCode, offline: ENV.HF_HUB_OFFLINE === '1'});
+    }
+
+    if (parts[1] === 'settings' && req.method === 'PUT') {
+      const body = JSON.parse((await readBody(req)).toString('utf8') || '{}');
+      const cur = userCfg();
+      const next = {...cur, ...body, ai: {...(cur.ai ?? {}), ...(body.ai ?? {})}, shariah: {...(cur.shariah ?? {}), ...(body.shariah ?? {})}, planner: {...(cur.planner ?? {}), ...(body.planner ?? {})}, audio: {...(cur.audio ?? {}), ...(body.audio ?? {})}};
+      if (body.ai && 'claudeKey' in body.ai && String(body.ai.claudeKey).startsWith('••••')) next.ai.claudeKey = cur.ai?.claudeKey ?? '';
+      writeFileSync(USER_CFG, JSON.stringify(next, null, 2));
+      return send(res, 200, {ok: true});
     }
 
     // /api/projects
@@ -156,7 +169,7 @@ createServer(async (req, res) => {
             : [[PY, ['-m', 'ayah_pipeline', 'lint', slug, '--stage', 'render']], node(join(ROOT, 'engine/render.mjs'), slug)],
         }[cmd];
         if (!steps) return send(res, 404, {error: 'unknown command'});
-        if ((cmd === 'ai' || cmd === 'plan') && body.mode === 'claude' && !process.env.ANTHROPIC_API_KEY) return send(res, 400, {error: 'مفتاح Claude API مش متسجل (ANTHROPIC_API_KEY)'});
+        if ((cmd === 'ai' || cmd === 'plan') && body.mode === 'claude' && !claudeKey()) return send(res, 400, {error: 'مفتاح Claude API مش متسجل (ANTHROPIC_API_KEY)'});
         return send(res, 200, runJob(cmd, steps()));
       }
       if (what === 'prompt') {

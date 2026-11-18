@@ -114,7 +114,9 @@ def lint(sb: dict, sacred: list, cfg: dict, stage: str = "stills", approvals: di
                     tx = (G.bbox(el)[0] + G.bbox(el)[2]) / 2
                     if (tx - c["x"]) * G.facing(c) < 0:
                         r.err("REAL_AIM", cw, "الشخصية مديّة ضهرها للحاجة اللي عايزها", "اقلب flip")
-                    if view == "back":
+                    if view == "back" and abs((G.bbox(el)[0] + G.bbox(el)[2]) / 2 - c["x"]) > 160:
+                        r.err("REAL_FACE", cw, "الحاجة على جنبه وهو مديّنا ضهره: لازم يبص عليها", "view: side ووشه ناحيتها (flip حسب المكان)")
+                    if view in ("back", "side") and c.get("pose") == "point":
                         want = G.aim_to(c, el)
                         if c.get("aim") is None:
                             r.err("REAL_AIM", cw, f"مفيش aim محسوب. الزاوية الصح {want:.0f}°", f"aim: {round(want)}")

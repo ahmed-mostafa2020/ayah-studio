@@ -122,9 +122,16 @@ def _salik(x=360, view="back", pose="stand", mood="righteous", **kw):
     return c
 
 
-def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False, mood: str | None = None) -> dict:
+def _raise_arm(c, el, at, mot):
+    """the figure faces the target and lifts its arm to point at it exactly when the key word is said."""
+    c["aim"] = round(G.aim_to(c, el))
+    mot.append({"target": c["id"], "prop": "aim", "from": -80, "to": c["aim"], "start": at, "dur": 0.5, "ease": "out", "phase": "move", "layer": "primary", "sfx": "lift"})
+
+
+def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False, mood: str | None = None, keyt: float | None = None) -> dict:
     """returns {characters, elements, motion, camera?, background, lightReason?}"""
     p = params or {}
+    kt = min(max(t0 + 0.3, keyt if keyt is not None else t0 + 0.6), max(t0 + 0.3, t1 - 0.8))  # the key word moment
     obj = p.get("obj", "coins")
     chars, els, mot, bg = [], [], [], {"kind": "paper", "mood": mood or "calm"}
     cam = None
@@ -132,13 +139,13 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
     heedless = "heedless" if obj in ("coins", "villa", "car", "plane", "yacht") else "righteous"
 
     def want_pair(sx=330, ox=800, shadow=True):
-        c = _salik(sx, "back", "point", heedless, action="want", target="obj")
+        c = _salik(sx, "side", "point", heedless, action="want", target="obj")
         e = {"id": "obj", "type": obj, "x": ox, "y": GROUND, "scale": 1.0}
-        c["aim"] = round(G.aim_to(c, e))
+        _raise_arm(c, e, kt, mot)
         if shadow:
             c["shadow"] = {"reach": max(0, round(G.bbox(e)[0] - c["x"] - 12)), "toward": "obj"}
-            mot.append({"target": "salik.shadow", "prop": "reach", "from": 0, "to": c["shadow"]["reach"], "start": t0 + 0.5,
-                        "dur": max(0.6, min(1.8, t1 - t0 - 0.6)), "ease": "out", "phase": "move", "layer": "secondary"})
+            mot.append({"target": "salik.shadow", "prop": "reach", "from": 0, "to": c["shadow"]["reach"], "start": kt + 0.2,
+                        "dur": max(0.6, min(1.8, t1 - kt - 0.3)), "ease": "out", "phase": "move", "layer": "secondary"})
         return c, e
 
     if recipe == "present":
@@ -150,12 +157,13 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
         els.append({"id": "path", "type": "path", "x": 540, "y": GROUND + 6, "w": 1000, "overlapOk": True})
         if p.get("obj") or True:
             els.append({"id": "obj", "type": obj, "x": 900, "y": GROUND, "scale": 0.8})
-        mot.append({"target": "salik", "prop": "x", "from": 260, "to": 440, "start": t0, "dur": t1 - t0, "ease": "inOut", "phase": "move", "layer": "secondary", "sfx": "steps"})
+        mot.append({"target": "salik", "prop": "x", "from": 200, "to": 560, "start": t0, "dur": t1 - t0, "ease": "inOut", "phase": "move", "layer": "secondary", "sfx": "steps", "pause": True})
         mot += _enter("obj", t0 + 0.3, "scale", 0.9, 1, 0.6, "background")
     elif recipe == "want":
         c, e = want_pair()
         chars.append(c); els.append(e)
-        mot += _enter("obj", t0 + 0.15, "scale", 0.9, 1)
+        mot += _enter("obj", max(t0, kt - 0.35), "scale", 0.85, 1)
+        mot.append({"target": "salik", "prop": "x", "from": 300, "to": 340, "start": kt, "dur": 0.8, "ease": "out", "phase": "move", "layer": "secondary"})
     elif recipe == "thought":
         c = _salik(330, "side", "stand", "righteous")
         chars.append(c)
@@ -174,10 +182,10 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
         chars.append(c); els.append(e)
         els.append({"id": "q", "type": "thought", "x": 800, "y": 1230, "label": "؟", "fontSize": 80, "w": 170, "overlapOk": True})
         mot += _enter("obj", t0 + 0.1, "scale", 0.6, 1, 0.6)
-        mot += _enter("q", t0 + 0.6, "scale", 0.8, 1)
+        mot += _enter("q", kt, "scale", 0.8, 1)
     elif recipe == "count":
         n = int(p.get("n", 3))
-        c = _salik(240, "back", "point", heedless, action="want", target="o3")
+        c = _salik(240, "side", "point", heedless, action="want", target="o3")
         chars.append(c)
         for i in range(n):
             e = {"id": f"o{i + 1}", "type": obj, "x": 450 + i * 165, "y": GROUND, "scale": 0.68}
@@ -187,7 +195,7 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
             mot += _enter(e["id"], at, "scale", 0.7, 1) + _enter(b["id"], at + 0.1, "y", 24, 0)
         target = next(e for e in els if e["id"] == f"o{n}")
         c["target"] = target["id"]
-        c["aim"] = round(G.aim_to(c, target))
+        _raise_arm(c, target, t0 + 0.4, mot)
     elif recipe == "valley":
         els += [{"id": "m1", "type": "mountain", "x": 330, "y": GROUND, "scale": 0.95, "overlapWith": ["m2", "gold"]},
                 {"id": "m2", "type": "mountain", "x": 760, "y": GROUND, "scale": 0.95, "overlapWith": ["m1", "gold"]},
@@ -196,7 +204,8 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
         mot += _enter("m1", t0, "y", 60, 0, 0.6, "secondary") + _enter("m2", t0 + 0.15, "y", 60, 0, 0.6, "secondary") + _enter("gold", t0 + 0.4, "scale", 0.6, 1, 0.6)
     elif recipe == "chart":
         els.append({"id": "chart", "type": "chart", "x": 640, "y": 1420, "trend": "up", "overlapOk": True})
-        chars.append(_salik(230, "side", "point", heedless, scale=0.85))
+        chars.append(_salik(230, "side", "point", heedless, scale=0.85, target="chart"))
+        _raise_arm(chars[-1], els[-1], kt, mot)
         mot.append({"target": "chart", "prop": "light", "from": 0, "to": 1, "start": t0 + 0.2, "dur": max(0.8, t1 - t0 - 0.4), "ease": "out", "phase": "move", "layer": "primary"})
         mot += _enter("chart", t0, "y", 30, 0)
     elif recipe == "no":
@@ -220,7 +229,7 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
         bg.update(kind="dawn", mood="warm")
     elif recipe == "grave":
         els += [{"id": "grave", "type": "grave", "x": 720, "y": GROUND}, {"id": "hg", "type": "icon", "icon": "hourglass", "x": 760, "y": 1180, "overlapOk": True}]
-        chars.append(_salik(330, "back", "sad", "righteous", action="look_ahead"))
+        chars.append(_salik(330, "side", "sad", "righteous"))
         mot += _enter("grave", t0, "y", 30, 0) + _enter("hg", t0 + 0.4, "scale", 0.8, 1)
         bg["mood"] = "cold"
     elif recipe == "ages":
@@ -231,10 +240,12 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
         for i, cid in enumerate(("old", "salik", "young")):  # right → left, like reading
             mot += _enter(cid, t0 + i * 0.35)
     elif recipe == "lantern":
-        chars.append(_salik(380, "back", "point", "righteous", target="lamp", light=0.8))
+        chars.append(_salik(380, "side", "point", "righteous", target="lamp"))
         e = {"id": "lamp", "type": "lantern", "x": 760, "y": 1300, "overlapOk": True}
         els.append(e)
-        chars[-1]["aim"] = round(G.aim_to(chars[-1], e))
+        _raise_arm(chars[-1], e, kt, mot)
+        mot.append({"target": "salik", "prop": "light", "from": 0, "to": 0.9, "start": kt + 0.3, "dur": 0.8, "ease": "out", "phase": "move", "layer": "secondary"})
+        chars[-1]["light"] = 0.9
         mot += _enter("lamp", t0 + 0.2, "y", 30, 0)
     elif recipe == "light":
         chars.append(_salik(540, "back", "stand", "righteous", light=1))
@@ -247,21 +258,27 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
 
     if chars and "salik" in [c["id"] for c in chars] and not any(m["target"] == "salik" and m["phase"] == "enter" for m in mot) and recipe != "ages":
         mot += _enter("salik", t0)
-    if flip and recipe in ("want", "hypo", "thought", "sign", "no", "grave", "chart", "lantern"):
+    if flip and recipe in ("want", "hypo", "thought", "sign", "no", "grave", "chart", "lantern", "walk", "count"):
         for c in chars:
             c["x"] = 1080 - c["x"]; c["flip"] = not c.get("flip")
         for e in els:
             if e["type"] not in ("path",):
                 e["x"] = 1080 - e["x"]
         for m in mot:
-            if m["prop"] == "x" and m["phase"] == "move" and m["target"] != "obj":
+            if m["prop"] == "x" and m["phase"] == "move":
                 m["from"], m["to"] = 1080 - m["from"], 1080 - m["to"]
         for c in chars:
-            if c.get("target") and c.get("view") == "back":
+            if c.get("target") and c.get("view") in ("back", "side") and c.get("pose") == "point":
                 c["aim"] = round(G.aim_to(c, next(e for e in els if e["id"] == c["target"])))
-    if not cam and t1 - t0 > 3.5:
+                for m in mot:
+                    if m["target"] == c["id"] and m["prop"] == "aim":
+                        m["to"] = c["aim"]
+    if not cam and t1 - t0 > 1.4:
         cx = chars[0]["x"] if chars else 540
-        cam = {"from": {"zoom": 1.0, "x": 540, "y": 1300}, "to": {"zoom": 1.08, "x": (cx + 540) / 2, "y": 1320}, "ease": "inOut"}
+        if flip:
+            cam = {"from": {"zoom": 1.1, "x": (cx + 540) / 2, "y": 1330}, "to": {"zoom": 1.0, "x": 540, "y": 1300}, "ease": "inOut"}
+        else:
+            cam = {"from": {"zoom": 1.0, "x": 540, "y": 1300}, "to": {"zoom": 1.1, "x": (cx + 540) / 2, "y": 1330}, "ease": "inOut"}
     mot.append({"target": "bg", "prop": "light", "from": 0.97, "to": 1.03, "start": t0, "dur": t1 - t0, "ease": "inOut", "phase": "move", "layer": "background"})
     out = {"characters": chars, "elements": els, "motion": mot, "background": bg}
     if cam:
