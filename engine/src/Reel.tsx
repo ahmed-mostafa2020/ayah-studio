@@ -220,7 +220,7 @@ const Hook: React.FC<{sb: Storyboard; t: number}> = ({sb, t}) => {
   return (
     <>
       {bgOp > 0 && <AbsoluteFill style={{background: `linear-gradient(180deg, ${h.bg} 0%, #FBF5EA 78%)`, opacity: bgOp}} />}
-      <div style={{position: 'absolute', left: 60, right: 60, top: 470 - 260 * k, textAlign: 'center', direction: 'rtl', opacity: 1 - k, transform: `scale(${breathe})`}}>
+      <div style={{position: 'absolute', left: 60, right: 60, top: 470 - 520 * k, textAlign: 'center', direction: 'rtl', opacity: 1 - k, transform: `scale(${breathe * (1 - 0.25 * k)})`}}>
         <svg width={150} height={120} viewBox="-60 -50 120 100" style={{display: 'block', margin: '0 auto 14px'}}><BrandDefs /><BHeart s={1.6} glow={0.8} /></svg>
         <div style={{fontFamily: 'Alexandria', fontWeight: 800, fontSize: 108, lineHeight: 1.28}}>
           {words.map((w, i) => <span key={i} style={{color: accent.has(w) || (!accent.size && i >= words.length / 2) ? B.coral : B.ink}}>{w} </span>)}
@@ -251,7 +251,8 @@ export const Reel: React.FC<ReelProps> = ({storyboard: sb, sacred, audio}) => {
   return (
     <AbsoluteFill style={{background: B.paper}}>
       {sb.scenes.map((sc) => <SceneView key={sc.id} sc={sc} t={t} sacred={sacred} />)}
-      <Captions caps={sb.captions} t={t} top={capTop} />
+      {/* captions start only once the hook has left, so the two never overlap */}
+      <div style={{opacity: interpolate(t, [sb.template.hook.end + 0.45, sb.template.hook.end + 0.75], [0, 1], clamp)}}><Captions caps={sb.captions} t={t} top={capTop} /></div>
       <Hook sb={sb} t={t} />
       <Outro sb={sb} t={t} />
       <Logo />

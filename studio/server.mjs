@@ -131,6 +131,7 @@ createServer(async (req, res) => {
         const src = readdirSync(d).find((f) => f.startsWith('source.') && !f.endsWith('.wav')) ?? 'source.wav';
         return serveFile(res, join(d, existsSync(join(d, 'voice.wav')) ? 'voice.wav' : src));
       }
+      if (what === 'out' && parts[4]) return serveFile(res, join(d, 'out', parts[4].replace(/[\\/]/g, '')));
       if (what === 'stills' && parts[4]) return serveFile(res, join(d, 'stills', parts[4].replace(/[\\/]/g, '')));
 
       if (what === 'run' && req.method === 'POST') {
@@ -144,7 +145,9 @@ createServer(async (req, res) => {
           lint: () => [[PY, ['-m', 'ayah_pipeline', 'lint', slug, '--stage', body.stage === 'render' ? 'render' : 'stills'], {allowFail: true}]],
           stills: () => [[PY, ['-m', 'ayah_pipeline', 'lint', slug], {allowFail: true}], node(join(ROOT, 'engine/stills.mjs'), slug, ...(body.scenes ? [`--scenes=${body.scenes.join(',')}`] : []))],
           ai: () => [[PY, ['-m', 'ayah_pipeline', 'ai', body.task, slug, '--mode', body.mode === 'local' ? 'local' : 'claude', ...(body.ids ? ['--ids', body.ids.join(',')] : [])]]],
-          render: () => [[PY, ['-m', 'ayah_pipeline', 'lint', slug, '--stage', 'render']], node(join(ROOT, 'engine/render.mjs'), slug)],
+          render: () => body.to
+            ? [node(join(ROOT, 'engine/render.mjs'), slug, `--to=${Math.max(5, Math.min(120, Number(body.to) || 20))}`)]  // preview: first N seconds
+            : [[PY, ['-m', 'ayah_pipeline', 'lint', slug, '--stage', 'render']], node(join(ROOT, 'engine/render.mjs'), slug)],
         }[cmd];
         if (!steps) return send(res, 404, {error: 'unknown command'});
         if ((cmd === 'ai' || cmd === 'plan') && body.mode === 'claude' && !process.env.ANTHROPIC_API_KEY) return send(res, 400, {error: 'مفتاح Claude API مش متسجل (ANTHROPIC_API_KEY)'});

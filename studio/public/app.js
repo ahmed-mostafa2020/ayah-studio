@@ -261,8 +261,13 @@ const TABS = {
     view.innerHTML = `<div class="card"><h2>الرندر والإخراج</h2>
       <p>الفاحص قبل الرندر: <span class="pill ${lint.errors.length ? 'err' : 'ok'}">${lint.errors.length} خطأ</span></p>
       <ul class="lint">${lint.errors.map((i) => `<li>✗ <b>${esc(i.where)}</b>: ${esc(i.msg)}</li>`).join('')}</ul>
-      <button class="primary" id="rnd" ${lint.errors.length ? 'disabled' : ''}>رندر الفيديو</button>
+      <div class="row"><button class="primary" id="rnd" ${lint.errors.length ? 'disabled' : ''}>رندر الفيديو كامل</button>
+        <button id="prev">معاينة أول <input id="pv" type="number" value="20" min="5" max="120" style="width:64px" /> ثانية</button></div>
+      <p class="muted">المعاينة بتترندر من غير ما تستنى الموافقة على كل المشاهد، علشان تشوف الحركة والصوت بسرعة، والأجزاء اللي اترندرت بيتعاد استخدامها في الرندر الكامل.</p>
       <p class="muted">الرندر بيتعمل على أجزاء (حوالي ${S.cfg.render.chunkFrames} فريم للجزء) وبعدين بيتجمع، ومعاه المكساج والصورة المصغّرة والعنوان والوصف والتعليق المثبّت في فولدر واحد.</p></div><div id="rjob"></div>`;
+    $('#prev').onclick = async (e) => { if (e.target.id === 'pv') return; const n = +$('#pv').value || 20;
+      const r = await follow(await run('render', {to: n}), $('#rjob'), `بيرندر أول ${n} ثانية`);
+      if (r.status === 'done') $('#rjob').innerHTML = `<div class="card"><video controls style="max-height:70vh" src="/api/p/${encodeURIComponent(S.slug)}/out/${encodeURIComponent(S.slug)}_first${n}s.mp4?${Date.now()}"></video></div>`; };
     $('#rnd').onclick = async () => { const r = await follow(await run('render'), $('#rjob'), 'بيرندر الفيديو'); if (r.status === 'done') toast('الفيديو جاهز ✅'); };
   },
 };

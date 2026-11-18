@@ -17,6 +17,8 @@ def main(argv=None):
     s = sub.add_parser("rescene"); s.add_argument("slug"); s.add_argument("scene"); s.add_argument("--recipe"); s.add_argument("--params")
     s = sub.add_parser("ai"); s.add_argument("task", choices=["hadith", "words", "meta", "review", "plan"]); s.add_argument("slug")
     s.add_argument("--mode", choices=["claude", "local"], default="claude"); s.add_argument("--estimate", action="store_true"); s.add_argument("--ids")
+    s = sub.add_parser("mix"); s.add_argument("slug"); s.add_argument("--to", type=float)
+    s = sub.add_parser("srt"); s.add_argument("slug")
     s = sub.add_parser("recipes"); s.add_argument("slug", nargs="?", default="_")
     for c in ["transcribe", "analyze", "sacred", "prepare", "plan", "lint", "status", "estimate"]:
         s = sub.add_parser(c); s.add_argument("slug")
@@ -59,6 +61,12 @@ def main(argv=None):
             from .planner import plan
             return _out(plan(p, a.mode))
         _out(ai.run(p, a.task, a.mode, a.ids.split(",") if a.ids else None))
+    elif a.cmd == "mix":
+        from .mix import mix
+        _out(mix(p, a.to))
+    elif a.cmd == "srt":
+        from .mix import srt
+        _out({"srt": srt(p)})
     elif a.cmd == "estimate":
         from .planner import estimate
         _out(estimate(p))
