@@ -1,0 +1,42 @@
+{
+  "language": "ar",
+  "style": "hawiya",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "audio": {
+    "silenceMax": 0.8,
+    "silenceKeep": 0.25,
+    "bedGapDb": -32,
+    "minGapForBedCheck": 0.35
+  },
+  "transcribe": {
+    "model": "large-v3",
+    "computeType": "int8",
+    "beamSize": 5,
+    "lowConfidence": 0.55
+  },
+  "shariah": {
+    "womenAllowed": false
+  },
+  "planner": {
+    "mode": "local",
+    "ollamaModel": "qwen2.5:7b-instruct",
+    "claudeModel": "claude-sonnet-5-5",
+    "beatSeconds": 5
+  },
+  "render": {
+    "chunkFrames": 480,
+    "crf": 20,
+    "preset": "veryfast"
+  },
+  "channel": {
+    "name": "آية لمست قلبي",
+    "shareLine": "ابعتها لحد محتاج يسمعها 🤍",
+    "postShareLine": "شاركها مع حد تنفعه 🤍"
+  },
+  "online": {
+    "publishing": false,
+    "linkImport": false
+  }
+}

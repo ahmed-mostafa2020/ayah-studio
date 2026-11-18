@@ -1,0 +1,14 @@
+{
+  "name": "ayah-studio",
+  "version": "0.1.0",
+  "description": "ستوديو آية — تحويل مقطع صوت لريل موشن 9:16 بهوية «آية لمست قلبي»، أوفلاين",
+  "private": false,
+  "type": "module",
+  "bin": { "ayah": "cli/ayah.mjs" },
+  "workspaces": ["engine", "studio"],
+  "scripts": {
+    "test": "python3 pipeline/tests/test_rules.py",
+    "doctor": "node cli/ayah.mjs doctor"
+  },
+  "license": "MIT"
+}

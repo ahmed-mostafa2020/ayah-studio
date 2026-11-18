@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ستوديو آية</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<header>
+  <div class="brand"><span class="heart">♥</span> ستوديو آية</div>
+  <nav id="tabs">
+    <button data-tab="projects" class="on">المشاريع</button>
+    <button data-tab="transcript">التفريغ</button>
+    <button data-tab="sacred">الآيات والأحاديث</button>
+    <button data-tab="board">الستوري بورد</button>
+    <button data-tab="stills">الصور والموافقة</button>
+    <button data-tab="render">الرندر والإخراج</button>
+  </nav>
+  <div id="current"></div>
+</header>
+<main id="view"></main>
+<div id="toast"></div>
+<dialog id="dlg"><form method="dialog"><div id="dlgBody"></div><menu><button value="cancel" class="ghost">إلغاء</button><button value="ok" id="dlgOk">موافق</button></menu></form></dialog>
+<script src="/app.js" type="module"></script>
+</body>
+</html>
