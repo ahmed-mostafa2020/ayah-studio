@@ -65,7 +65,7 @@ const pub = existsSync(join(P, 'publish.json')) ? JSON.parse(readFileSync(join(P
 writeFileSync(join(out, 'post.txt'), [
   `العنوان: ${pub.title ?? sb.template.hook.text}`, '',
   `الوصف:\n${pub.description ?? sb.template.hook.text}`, '',
-  `التعليق المثبّت: ${pub.pinned ?? sb.pinnedComment ?? '(اكتب سؤال يتجاوب عليه من موضوع الفيديو)'}`, '',
+  `التعليق المثبّت: ${pub.pinned || sb.pinnedComment || '(اكتب سؤال يتجاوب عليه من موضوع الفيديو، أو استخدم زرار الـ AI)'}`, '',
   (pub.hashtags ?? []).join(' '), '',
   '🎙️ الصوت: [اسم الشيخ]  —  المقطع الأصلي: [الرابط]   (الاسم في الوصف بس، مش جوه الفيديو)',
 ].join('\n'));
