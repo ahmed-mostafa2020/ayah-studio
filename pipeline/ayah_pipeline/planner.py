@@ -81,6 +81,7 @@ def beats_rules(ph: list, sacred: list, beat: float) -> list:
             b.update(_hints(words))
             b["suggest"] = [[r, p] for r, p in R.suggest(words)]
             b["keyt"] = next((w["t0"] for w in words if w.get("key")), None)
+            b["wl"] = [{"norm": w["norm"], "t0": w["t0"]} for w in words]
             sid = next((w["sacred"] for w in words if w.get("sacred")), None)
             if sid:
                 b["sacred"] = sid
@@ -100,7 +101,13 @@ def beats_rules(ph: list, sacred: list, beat: float) -> list:
 # ---------- LLM planners (same output contract as beats_rules) ----------
 PROMPT = """أنت مخرج موشن جرافيك لقناة «آية لمست قلبي». قسّم الكلام لمشاهد (مشهد كل 4–6 ثواني) واختار لكل مشهد «وصفة» من المكتبة دي بس:
 {catalog}
-باراميترات: thought و sign محتاجين "text" (كلمات الشيخ نفسها، بنفس لهجته، 1–5 كلمات). want و hypo و count و no محتاجين "obj" من: coins, house, flat, car, villa, plane, yacht, sack. count ممكن ياخد "n" (2–4).
+باراميترات (كل الكلام اللي على الشاشة بنفس لهجة الشيخ وبكلامه):
+- thought: "text" (السطر الأساسي، 1–4 كلمات) و"sub" (سطر صغير تحته اختياري). sign / chase: "text" (كلمة اللافتة).
+- want / hypo / count / no: "obj" من coins, house, flat, car, villa, plane, yacht, sack. count: "n" (2–4).
+- ladder: "items" قايمة بالترتيب من flat, villa, car, plane, yacht, house, coins. valleys: "n" (1–3، كل وادي بيظهر على كلمته).
+- years: "from" و"to" و"stamp" (كلمة تتختم في الآخر، اختياري). tug: "text" (اللي بيشدّه، مثلًا «حب الدنيا»).
+- remember: "icon" من grave, house, coins. paper: "text".
+فكّر زي مخرج: كل مشهد فيه حدث بيحصل (حاجة بتتملي، بتبعد، بتظهر واحدة ورا التانية، حد بيشد)، مش صورة ثابتة.
 القواعد: كل مشهد يشرح الجملة اللي بتتقال فيه. ممنوع أي رسم لنبي أو رمز لله أو تصوير الجنة والنار أو عنف. ممنوع تكرار نفس الوصفة في مشهدين ورا بعض.
 المقاطع اللي فيها آية أو حديث سيبها (الأداة بتحط كارت لوحدها).
 رجّع JSON بس:
@@ -166,6 +173,7 @@ def _from_llm(data, tr):
         if b.get("recipe") not in R.CATALOG:
             b.pop("recipe", None)
         b["meaning"] = " ".join(W[i]["w"] for i in range(a, z + 1) if i in W)
+        b["wl"] = [{"norm": W[i]["norm"], "t0": W[i]["t0"]} for i in range(a, z + 1) if i in W]
         b["suggest"] = [[r, q] for r, q in R.suggest([W[i] for i in range(a, z + 1) if i in W])]
         if b.get("recipe"):
             b["suggest"] = [[b["recipe"], b.get("params", {})]] + [s for s in b["suggest"] if s[0] != b["recipe"]]
@@ -204,8 +212,9 @@ def compose_scene(k, b, spans, women):
             rec, params = "present", {}
     sc["recipe"], sc["params"], sc["suggest"], sc["flip"] = rec, params, b.get("suggest", []), b.get("flip", False)
     keyt = b.get("keyt")
-    built = R.compose(rec, params, t0, t1, flip=b.get("flip", False), mood=b.get("mood"), keyt=keyt)
+    built = R.compose(rec, params, t0, t1, flip=b.get("flip", False), mood=b.get("mood"), keyt=keyt, words=b.get("wl"))
     sc["keyt"] = keyt
+    sc["wl"] = b.get("wl", [])
     for kname in ("characters", "elements", "motion", "camera", "lightReason"):
         if kname in built:
             sc[kname] = built[kname]
@@ -335,7 +344,7 @@ def plan(p: Project, mode: str | None = None) -> dict:
         try:
             data = beats_claude(tr, cfg, cfg["shariah"]["womenAllowed"]) if mode == "claude" else beats_ollama(tr, cfg, cfg["shariah"]["womenAllowed"])
             ai_beats, hook, pinned = _from_llm(data, tr), data.get("hook"), data.get("pinned")
-            beats = merge_ai(beats_rules(ph, spans, cfg["planner"]["beatSeconds"]), ai_beats)
+            beats = merge_ai(beats_rules(ph, spans, cfg["planner"]["beatSeconds"]), ai_beats, tr)
             p.write("ai_extra.json", {k: data.get(k) for k in ("title", "description", "pinned", "hook")})
             if not beats:
                 raise ValueError("empty plan")
@@ -350,7 +359,60 @@ def plan(p: Project, mode: str | None = None) -> dict:
     return {"mode": used, "scenes": len(sb["scenes"]), "hook": sb["template"]["hook"]["text"]}
 
 
-def merge_ai(rule_beats, ai_beats):
+def merge_ai(rule_beats, ai_beats, tr=None):
+    """AI beats decide the cuts and ideas; every verse/hadith keeps its own card beat from the rules; gaps are filled by the rules."""
+    if tr is None:
+        return _merge_ai_overlap(rule_beats, ai_beats)
+    ws = [w for w in tr["words"] if not w.get("drop")]
+    cards = [b for b in rule_beats if (b.get("sacred") or "d")[0] in "qh"]
+    out = list(cards)
+    def piece(src, a, z):
+        inner = [w for w in ws if w["t0"] >= a - 0.01 and w["t1"] <= z + 0.01]
+        if not inner or z - a < 0.9:
+            return None
+        b = {k: v for k, v in src.items() if k not in ("start", "end", "words", "meaning", "wl", "sacred")}
+        b.update(start=inner[0]["t0"], end=inner[-1]["t1"], words=[inner[0]["i"], inner[-1]["i"]], meaning=" ".join(w["w"] for w in inner),
+                 wl=[{"norm": w["norm"], "t0": w["t0"]} for w in inner])
+        b["keyt"] = next((w["t0"] for w in inner if w.get("key")), None)
+        return b
+    for a in sorted(ai_beats, key=lambda x: x["start"]):
+        segs = [(a["start"], a["end"])]
+        for c in cards:
+            nxt = []
+            for s0, s1 in segs:
+                if c["end"] <= s0 or c["start"] >= s1:
+                    nxt.append((s0, s1))
+                else:
+                    if c["start"] > s0: nxt.append((s0, c["start"] - 0.01))
+                    if c["end"] < s1: nxt.append((c["end"] + 0.01, s1))
+            segs = nxt
+        for s0, s1 in segs:
+            p_ = piece(a, s0, s1)
+            if p_:
+                out.append(p_)
+    covered = sorted((b["start"], b["end"]) for b in out)
+    for b in rule_beats:  # fill only what nothing else covers, clipped to the free time
+        if b in cards:
+            continue
+        free = [(b["start"], b["end"])]
+        for c0, c1 in covered:
+            nxt = []
+            for s0, s1 in free:
+                if c1 <= s0 or c0 >= s1:
+                    nxt.append((s0, s1))
+                else:
+                    if c0 > s0: nxt.append((s0, c0 - 0.01))
+                    if c1 < s1: nxt.append((c1 + 0.01, s1))
+            free = nxt
+        for s0, s1 in free:
+            p_ = piece(b, s0, s1)
+            if p_:
+                p_.pop("recipe", None); p_.pop("params", None)
+                out.append(p_)
+    return sorted(out, key=lambda b: b["start"])
+
+
+def _merge_ai_overlap(rule_beats, ai_beats):
     """keep the rules' segmentation (it isolates every verse/hadith so each gets its card and covers the whole clip);
     take the AI's recipe for each beat from the AI beat that overlaps it most."""
     for b in rule_beats:
@@ -363,6 +425,8 @@ def merge_ai(rule_beats, ai_beats):
                 best, ov = a, o
         if best:
             b["recipe"], b["params"] = best["recipe"], best.get("params", {})
+            if best.get("hook_scene"):
+                b["hook_scene"] = True
             if best.get("mood"):
                 b["mood"] = best["mood"]
             b["suggest"] = [[best["recipe"], best.get("params", {})]] + [x for x in b.get("suggest", []) if x[0] != best["recipe"]]
@@ -375,7 +439,7 @@ def rescene(p: Project, sid: str, recipe: str | None = None, params: dict | None
     sc = next(s for s in sb["scenes"] if s["id"] == sid)
     rec = recipe or sc.get("recipe", "present")
     prm = params if params is not None else sc.get("params", {})
-    built = R.compose(rec, prm, sc["start"], sc["end"], flip=sc.get("flip", False), mood=sc.get("background", {}).get("mood"), keyt=sc.get("keyt"))
+    built = R.compose(rec, prm, sc["start"], sc["end"], flip=sc.get("flip", False), mood=sc.get("background", {}).get("mood"), keyt=sc.get("keyt"), words=sc.get("wl"))
     for k in ("characters", "elements", "motion", "camera", "lightReason", "background"):
         sc.pop(k, None) if k in ("camera", "lightReason") else None
         if k in built:
@@ -400,7 +464,7 @@ def plan_from_answer(p: Project, data: dict) -> dict:
     for q in ph:
         _hints(q)
     p.write("transcript.json", tr)
-    beats = merge_ai(beats_rules(ph, spans, cfg["planner"]["beatSeconds"]), _from_llm(data, tr))
+    beats = merge_ai(beats_rules(ph, spans, cfg["planner"]["beatSeconds"]), _from_llm(data, tr), tr)
     p.write("ai_extra.json", {k: data.get(k) for k in ("title", "description", "pinned", "hook")})
     if any(data.get(k) for k in ("title", "description", "pinned")):
         p.write("publish.json", {**(p.read("publish.json") if p.has("publish.json") else {}), **{k: data[k] for k in ("title", "description", "pinned") if data.get(k)}})

@@ -38,10 +38,30 @@ CATALOG = {
     "lantern": "فانوس الهداية",
     "sad": "حزين ومهموم",
     "happy": "فرحان وراضي",
+    "chase": "ماشي ناحية لافتة وهي بتبعد عنه (مش بيوصل)",
+    "ladder": "سلّم الطمع: حاجات بتظهر واحدة ورا التانية وهو بيطلع",
+    "valleys": "وادي بيتملي دهب، وبعده التاني والتالت على الكلام",
+    "years": "عدّاد السنين بيكبر وهو بيعجّز",
+    "tug": "شد حبل مع «حب الدنيا» (المجاهدة)",
+    "conveyor": "سير متحرك ساحبه والدنيا معدّية",
+    "stop": "علامة «قِف» والظل بيسيب الحاجات",
+    "remember": "بيفتكر: فقاعة جواها رسمة (قبر/بيت/فلوس)",
+    "paper": "ورقة مكتوب عليها (مثلًا «كلام النبي ﷺ»)",
+    "heartx": "قلب بيعيّط وعليه شطب (مش كلام عواطف)",
     "card": "كارت آية أو حديث",
 }
 
 PATTERNS = [  # (regex on the normalised phrase, recipe, params-builder) — first match wins, the rest become suggestions
+    (r"(كلام النبي|النبي قال|رسول الله قال|ده مش كلامي)", "paper", lambda m, ph: {"text": "كلام النبي ﷺ"}),
+    (r"(افتكر|فاكر|تفتكر).{0,12}(القبر|الموت|هادم)", "remember", lambda m, ph: {"icon": "grave"}),
+    (r"\b(اوقف|وقف|قف|استني)\b", "stop", None),
+    (r"(بتسحل|بتسحب|ساحب|بتجري بيك|السير)", "conveyor", None),
+    (r"(نجاهد|جاهد|مجاهده)", "tug", lambda m, ph: {"text": "حب الدنيا"}),
+    (r"(عشت حياتك|طول عمرك|حياتك كلها|سنين)", "years", lambda m, ph: {"from": 20, "to": 80, "stamp": "مستحيل" if re.search("مستحيل", norm(" ".join(w["w"] for w in ph))) else ""}),
+    (r"(وديين|واديين|جبلين|\bودي\b|\bوادي\b)", "valleys", lambda m, ph: {"n": 3 if re.search(r"(ثالث|التالت|تالت)", norm(" ".join(w["w"] for w in ph))) else 2 if re.search(r"(التاني|تاني|وديين|واديين)", norm(" ".join(w["w"] for w in ph))) else 1}),
+    (r"(ملهاش نهايه|ورا الدنيا|وراء الدنيا|هيجر|بيجري ورا)", "ladder", None),
+    (r"(كفايه).{0,40}|(هتوصل|توصل).{0,30}", "chase", lambda m, ph: {"text": "كفاية"}),
+    (r"(عواطف|اغعاطيف|وعظ|وعظه)", "heartx", None),
     (r"(ايها الشاب|الشاب|الكهل|الشيخ وكلنا|كبير وصغير)", "ages", None),
     (r"\b(جبلين|جبل|الجبل|وادي|ودي|وديين|واديين)\b", "valley", None),
     (r"(تقول|هتقول|يقول|بيقول|قلت|تقولي|وتقول)\s+(.+)", "thought", lambda m, ph: {"text": _quote(ph, m)}),
@@ -128,9 +148,17 @@ def _raise_arm(c, el, at, mot):
     mot.append({"target": c["id"], "prop": "aim", "from": -80, "to": c["aim"], "start": at, "dur": 0.5, "ease": "out", "phase": "move", "layer": "primary", "sfx": "lift"})
 
 
-def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False, mood: str | None = None, keyt: float | None = None) -> dict:
+def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False, mood: str | None = None, keyt: float | None = None, words: list | None = None) -> dict:
     """returns {characters, elements, motion, camera?, background, lightReason?}"""
     p = params or {}
+    wl = words or []
+
+    def at(rx, default):
+        """time the first word matching rx is said inside this scene (events land on the spoken word)."""
+        for w in wl:
+            if re.search(rx, w.get("norm", "")):
+                return max(t0 + 0.1, min(t1 - 0.3, w["t0"]))
+        return default
     kt = min(max(t0 + 0.3, keyt if keyt is not None else t0 + 0.6), max(t0 + 0.3, t1 - 0.8))  # the key word moment
     obj = p.get("obj", "coins")
     chars, els, mot, bg = [], [], [], {"kind": "paper", "mood": mood or "calm"}
@@ -169,7 +197,7 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
         chars.append(c)
         txt = p.get("text", "…")
         fs = 56 if len(txt) <= 12 else 46 if len(txt) <= 20 else 38
-        els.append({"id": "bubble", "type": "thought", "x": 560, "y": 1150, "label": txt, "fontSize": fs, "overlapOk": True})
+        els.append({"id": "bubble", "type": "thought", "x": 560, "y": 1150, "label": txt, "sub": p.get("sub", ""), "fontSize": fs, "overlapOk": True})
         mot += _enter("bubble", t0 + 0.3, "scale", 0.85, 1)
     elif recipe == "sign":
         chars.append(_salik(330, "side", "walk", action="walk"))
@@ -237,8 +265,8 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
                   {"id": "salik", "kind": "salik", "x": 540, "y": GROUND, "view": "front", "pose": "stand", "action": "present", "scale": 0.9},
                   {"id": "old", "kind": "old_man", "x": 750, "y": GROUND, "view": "front", "pose": "stand", "action": "present", "scale": 0.9}]
         cam = {"from": {"zoom": 0.94, "x": 540, "y": 1300}, "to": {"zoom": 0.98, "x": 540, "y": 1300}, "ease": "inOut"}
-        for i, cid in enumerate(("old", "salik", "young")):  # right → left, like reading
-            mot += _enter(cid, t0 + i * 0.35)
+        for i, (cid, rx) in enumerate((("young", r"الشاب"), ("salik", r"الكهل"), ("old", r"الشيخ"))):  # each one appears on his word
+            mot += _enter(cid, at(rx, t0 + i * 0.5))
     elif recipe == "lantern":
         chars.append(_salik(380, "side", "point", "righteous", target="lamp"))
         e = {"id": "lamp", "type": "lantern", "x": 760, "y": 1300, "overlapOk": True}
@@ -250,6 +278,100 @@ def compose(recipe: str, params: dict, t0: float, t1: float, flip: bool = False,
     elif recipe == "light":
         chars.append(_salik(540, "back", "stand", "righteous", light=1))
         bg.update(kind="dawn", mood="warm")
+    elif recipe == "chase":
+        els.append({"id": "path", "type": "path", "x": 540, "y": GROUND + 6, "w": 1000, "overlapOk": True})
+        els.append({"id": "sign", "type": "sign", "x": 700, "y": GROUND, "label": p.get("text", "كفاية"), "fontSize": 50})
+        chars.append(_salik(220, "side", "walk", heedless, action="walk"))
+        mot.append({"target": "salik", "prop": "x", "from": 200, "to": 470, "start": t0, "dur": t1 - t0, "ease": "inOut", "phase": "move", "layer": "primary", "sfx": "steps", "pause": True})
+        mot.append({"target": "sign", "prop": "x", "from": 690, "to": 920, "start": t0 + 0.6, "dur": t1 - t0 - 0.6, "ease": "inOut", "phase": "move", "layer": "secondary"})
+    elif recipe == "ladder":
+        items = p.get("items") or ["flat", "villa", "car", "plane", "yacht"]
+        labels = {"flat": "شقة", "villa": "فيلا", "car": "عربية", "plane": "طيارة", "yacht": "يخت", "house": "بيت", "coins": "فلوس"}
+        els.append({"id": "ladder", "type": "ladder", "x": 540, "y": GROUND, "h": 900, "overlapWith": ["salik"]})
+        n = len(items)
+        for i, it in enumerate(items):
+            y = GROUND - 150 - i * 150
+            e = {"id": f"i{i}", "type": it, "x": 540 + (240 if i % 2 else -240), "y": y, "scale": 0.58, "caption": labels.get(it, ""), "overlapOk": True}
+            els.append(e)
+            mot += _enter(e["id"], t0 + 0.3 + i * (t1 - t0 - 0.8) / n, "scale", 0.6, 1, 0.45)
+        els.append({"id": "inf", "type": "infinity", "x": 540, "y": GROUND - 960, "overlapOk": True})
+        mot += _enter("inf", t1 - 0.7, "scale", 0.7, 1, 0.45)
+        chars.append(_salik(540, "back", "stand", heedless, action="climb", scale=0.75, overlapWith=["ladder"]))
+        mot.append({"target": "salik", "prop": "y", "from": 0, "to": -520, "start": t0, "dur": t1 - t0, "ease": "inOut", "phase": "move", "layer": "primary", "sfx": "steps", "pause": True})
+        cam = {"from": {"zoom": 0.8, "x": 540, "y": 1180}, "to": {"zoom": 0.74, "x": 540, "y": 1050}, "ease": "inOut"}
+    elif recipe == "valleys":
+        n = int(p.get("n", 1))
+        t2, t3 = at(r"(التاني|تاني|وديين|واديين)", t0 + (t1 - t0) * 0.45), at(r"(ثالث|التالت|تالت)", t0 + (t1 - t0) * 0.7)
+        xs = [540] if n == 1 else [370, 710] if n == 2 else [275, 525, 775]
+        sc = 1.0 if n == 1 else 0.75 if n == 2 else 0.58
+        mx = [xs[0] - 170 * sc / 0.75 * 0.75] + [x + 170 * sc for x in xs] if n > 1 else [330, 760]
+        for i, x in enumerate(mx):
+            els.append({"id": f"m{i}", "type": "mountain", "x": round(x), "y": GROUND, "scale": round(sc * (0.95 if n == 1 else 1), 2), "overlapOk": True})
+            mot += _enter(f"m{i}", t0 + 0.1 * i, "y", 50, 0, 0.6, "secondary")
+        starts = [t0 + 0.3, t2, t3]
+        for i, x in enumerate(xs):
+            els.append({"id": f"g{i}", "type": "goldvalley", "x": x, "y": GROUND, "scale": sc, "overlapOk": True})
+            mot.append({"target": f"g{i}", "prop": "light", "from": 0.02, "to": 1, "start": starts[i], "dur": 1.2, "ease": "out", "phase": "move", "layer": "primary"})
+            mot += _enter(f"g{i}", starts[i], "y", 0, 0, 0.3)
+        if n >= 3:
+            c = _salik(120, "side", "point", "heedless", target="g2", scale=0.6, action="want", overlapOk=True)
+            chars.append(c)
+            _raise_arm(c, els[-1], t3, mot)
+            els.append({"id": "want", "type": "thought", "x": 700, "y": 1060, "label": "عايز التالت!", "fontSize": 52, "overlapOk": True})
+            mot += _enter("want", t3 + 0.2, "scale", 0.85, 1)
+        else:
+            chars.append(_salik(xs[0], "back", "stand", "heedless", scale=0.62, overlapOk=True))
+        cam = {"from": {"zoom": 1.08, "x": 540, "y": 1300}, "to": {"zoom": 0.95 if n > 1 else 1.0, "x": 540, "y": 1300}, "ease": "inOut"}
+    elif recipe == "years":
+        els.append({"id": "count", "type": "counter", "x": 680, "y": 1200, "from": p.get("from", 20), "to": p.get("to", 80), "overlapOk": True})
+        mot.append({"target": "count", "prop": "light", "from": 0, "to": 1, "start": t0 + 0.2, "dur": max(1.0, t1 - t0 - 0.8), "ease": "inOut", "phase": "move", "layer": "primary"})
+        els.append({"id": "obj", "type": "coins", "x": 760, "y": GROUND, "scale": 1.0})
+        mot.append({"target": "obj", "prop": "scale", "from": 1.0, "to": 0.92, "start": t0 + 0.2, "dur": t1 - t0 - 0.4, "ease": "inOut", "phase": "move", "layer": "secondary"})
+        mid = (t0 + t1) / 2
+        chars.append(_salik(330, "side", "stand", "heedless"))
+        chars.append({"id": "old", "kind": "old_man", "x": 330, "y": GROUND, "view": "side", "pose": "sad", "overlapWith": ["salik"]})
+        mot += [{"target": "salik", "prop": "opacity", "from": 1, "to": 0, "start": mid, "dur": 0.4, "ease": "in", "phase": "exit", "layer": "primary"},
+                {"target": "salik", "prop": "y", "from": 0, "to": 6, "start": mid, "dur": 0.4, "ease": "in", "phase": "exit", "layer": "primary"},
+                {"target": "old", "prop": "opacity", "from": 0, "to": 1, "start": mid, "dur": 0.6, "ease": "out", "phase": "enter", "layer": "primary"},
+                {"target": "old", "prop": "y", "from": 20, "to": 0, "start": mid, "dur": 0.6, "ease": "out", "phase": "enter", "layer": "primary"}]
+        if p.get("stamp"):
+            els.append({"id": "stamp", "type": "stamp", "x": 560, "y": 1460, "label": p["stamp"], "overlapOk": True})
+            mot += _enter("stamp", at(r"مستحيل", t1 - 0.8), "scale", 1.3, 1, 0.3)
+    elif recipe == "tug":
+        c = _salik(300, "side", "pull", "righteous", action="pull")
+        chars.append(c)
+        els.append({"id": "lbl", "type": "ropelabel", "x": 800, "y": GROUND - 40, "label": p.get("text", "حب الدنيا"), "overlapOk": True})
+        els.append({"id": "rope", "type": "rope", "x": 550, "y": GROUND - 300, "from": {"character": "salik", "part": "hand"}, "to": "lbl"})
+        mot.append({"target": "lbl", "prop": "x", "from": 840, "to": 780, "start": t0 + 0.4, "dur": t1 - t0 - 0.6, "ease": "inOut", "phase": "move", "layer": "primary"})
+        mot.append({"target": "salik", "prop": "x", "from": 300, "to": 270, "start": t0 + 0.4, "dur": t1 - t0 - 0.6, "ease": "inOut", "phase": "move", "layer": "secondary"})
+    elif recipe == "conveyor":
+        els.append({"id": "belt", "type": "conveyor", "x": 540, "y": GROUND, "scale": 1.7, "overlapWith": ["salik"]})
+        chars.append(_salik(540, "side", "walk", "heedless", y=GROUND - 60, overlapWith=["belt"]))
+        for i, it in enumerate(["villa", "car", "coins"]):
+            e = {"id": f"w{i}", "type": it, "x": 900, "y": 1180 + i * 40, "scale": 0.45, "overlapOk": True, "offscreenOk": True}
+            els.append(e)
+            mot.append({"target": e["id"], "prop": "x", "from": 1180, "to": -120, "start": t0 + i * (t1 - t0) / 3.2, "dur": (t1 - t0) * 0.7, "ease": "inOut", "phase": "move", "layer": "secondary", "pause": True})
+    elif recipe == "stop":
+        chars.append(_salik(300, "side", "stand", "heedless", shadow={"reach": 380, "toward": "obj"}))
+        els.append({"id": "obj", "type": "car", "x": 860, "y": GROUND, "scale": 0.8})
+        els.append({"id": "stop", "type": "stop", "x": 600, "y": GROUND, "label": "قِف"})
+        ts = at(r"(اوقف|وقف|قف)", t0 + 0.5)
+        mot += _enter("stop", ts, "y", 40, 0)
+        mot.append({"target": "salik.shadow", "prop": "reach", "from": 380, "to": 0, "start": ts + 0.5, "dur": 1.2, "ease": "inOut", "phase": "move", "layer": "secondary"})
+        mot.append({"target": "obj", "prop": "opacity", "from": 1, "to": 0.35, "start": ts + 0.6, "dur": 0.8, "ease": "in", "phase": "move", "layer": "secondary"})
+    elif recipe == "remember":
+        chars.append(_salik(330, "side", "sad", "righteous"))
+        els.append({"id": "mem", "type": "thoughticon", "x": 640, "y": 1180, "icon": p.get("icon", "grave"), "overlapOk": True})
+        mot += _enter("mem", at(r"(القبر|الموت|هادم)", kt), "scale", 0.8, 1)
+        bg["mood"] = "cold"
+    elif recipe == "paper":
+        chars.append(_salik(300, "side", "stand", "righteous", target="paper"))
+        els.append({"id": "paper", "type": "paper", "x": 720, "y": 1350, "label": p.get("text", "كلام النبي ﷺ"), "overlapOk": True})
+        mot += _enter("paper", kt, "y", 30, 0)
+    elif recipe == "heartx":
+        els.append({"id": "heart", "type": "heartx", "x": 540, "y": 1350, "overlapOk": True})
+        mot += _enter("heart", t0 + 0.2, "scale", 0.85, 1)
+        mot.append({"target": "heart", "prop": "light", "from": 0.02, "to": 0.99, "start": at(r"(مش|ده مش)", t0 + (t1 - t0) * 0.55), "dur": 0.45, "ease": "out", "phase": "move", "layer": "primary"})
     elif recipe in ("sad", "happy"):
         chars.append(_salik(540, "side" if recipe == "sad" else "back", recipe, "righteous", light=1 if recipe == "happy" else 0))
         bg["mood"] = "cold" if recipe == "sad" else "warm"

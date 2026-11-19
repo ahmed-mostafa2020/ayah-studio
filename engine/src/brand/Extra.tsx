@@ -104,14 +104,15 @@ export const PPath: React.FC<{w?: number}> = ({w = 1000}) => (<g>
   {Array.from({length: Math.floor(w / 70)}).map((_, i) => <rect key={i} x={-w / 2 + 20 + i * 70} y={0} width={38} height={6} rx={3} fill="#fff" opacity={0.85} />)}</g>);
 
 // thought bubble: rounded cloud + two small circles toward the thinker (tailDir: -1 = tail to the left)
-export const PThought: React.FC<{label: string; fontSize?: number; w?: number; tailDir?: number}> = ({label, fontSize = 56, w, tailDir = -1}) => {
-  const W = w ?? Math.max(240, label.length * fontSize * 0.55 + 110);
-  const H = fontSize * 1.9 + 50;
+export const PThought: React.FC<{label: string; fontSize?: number; w?: number; tailDir?: number; sub?: string}> = ({label, fontSize = 56, w, tailDir = -1, sub}) => {
+  const W = w ?? Math.max(240, Math.max(label.length, (sub ?? '').length * 0.7) * fontSize * 0.55 + 110);
+  const H = fontSize * 1.9 + 50 + (sub ? fontSize * 0.9 : 0);
   return (<g>
     <ellipse cx={0} cy={-H / 2} rx={W / 2} ry={H / 2} fill="#FFFDF8" stroke={B.ink} strokeWidth={5} />
     <circle cx={tailDir * (W / 2 - 30)} cy={22} r={16} fill="#FFFDF8" stroke={B.ink} strokeWidth={4} />
     <circle cx={tailDir * (W / 2 - 4)} cy={56} r={9} fill="#FFFDF8" stroke={B.ink} strokeWidth={4} />
-    <text x={0} y={-H / 2 + fontSize * 0.36} textAnchor="middle" direction="rtl" fontFamily="Alexandria" fontWeight={800} fontSize={fontSize} fill={B.ink}>{label}</text>
+    <text x={0} y={-H / 2 + fontSize * 0.36 - (sub ? fontSize * 0.42 : 0)} textAnchor="middle" direction="rtl" fontFamily="Alexandria" fontWeight={800} fontSize={fontSize} fill={B.ink}>{label}</text>
+    {sub && <text x={0} y={-H / 2 + fontSize * 1.05} textAnchor="middle" direction="rtl" fontFamily="Alexandria" fontWeight={600} fontSize={fontSize * 0.62} fill={B.sageD}>{sub}</text>}
   </g>);
 };
 
@@ -149,3 +150,48 @@ export const PGoldValley: React.FC = () => (<g>
   <path d="M-150 0 L0 -160 L150 0 Z" fill="url(#bGold)" />
   <path d="M-150 0 L0 -160 L20 -130 L-110 0 Z" fill="#FBE29A" opacity={0.6} />
   {[[-40, -110], [50, -70], [0, -150]].map(([x, y], i) => <path key={i} transform={`translate(${x} ${y})`} d="M0 -14 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 Z" fill="#FFF6D6" />)}</g>);
+
+// ---------- event recipes (closer to the hand-made session scenes) ----------
+export const PStop: React.FC<{label?: string}> = ({label = 'قِف'}) => (<g>{contact(40)}
+  <rect x={-6} y={-300} width={12} height={300} rx={6} fill="#7F8896" />
+  <path d="M-62 -400 L-26 -436 H26 L62 -400 V-348 L26 -312 H-26 L-62 -348 Z" fill="#C8574A" stroke="#fff" strokeWidth={6} />
+  <text x={0} y={-358} textAnchor="middle" fontFamily="Alexandria" fontWeight={800} fontSize={44} fill="#fff">{label}</text></g>);
+
+export const PPaper: React.FC<{label?: string}> = ({label = ''}) => (<g transform="translate(0 -40)">
+  <rect x={-150} y={-200} width={300} height={200} rx={18} fill="#FFFDF8" stroke={B.sage} strokeWidth={5} />
+  {[0, 1, 2, 3].map((i) => <rect key={i} x={-110} y={-150 + i * 36} width={i === 3 ? 140 : 220} height={10} rx={5} fill="#C9CED6" />)}
+  {label && <text x={0} y={-218} textAnchor="middle" direction="rtl" fontFamily="Alexandria" fontWeight={800} fontSize={38} fill={B.sageD}>{label}</text>}</g>);
+
+export const PInfinity: React.FC = () => (<g transform="translate(0 -40)">
+  <path d="M0 0 C-30 -40 -90 -40 -90 0 C-90 40 -30 40 0 0 C30 -40 90 -40 90 0 C90 40 30 40 0 0 Z" fill="none" stroke={B.coral} strokeWidth={14} strokeLinecap="round" /></g>);
+
+export const PStamp: React.FC<{label?: string}> = ({label = 'مستحيل'}) => (<g transform="translate(0 -70) rotate(-10)">
+  <rect x={-170} y={-60} width={340} height={120} rx={16} fill="none" stroke="#C8574A" strokeWidth={10} />
+  <text x={0} y={22} textAnchor="middle" fontFamily="Alexandria" fontWeight={800} fontSize={70} fill="#C8574A">{label}</text></g>);
+
+export const PCounter: React.FC<{from?: number; to?: number; progress?: number; unit?: string}> = ({from = 20, to = 80, progress = 1, unit = 'سنة'}) => {
+  const n = Math.round(from + (to - from) * progress);
+  const ar = String(n).replace(/\d/g, (d) => '٠١٢٣٤٥٦٧٨٩'[+d]);
+  return (<g transform="translate(0 -80)">
+    <rect x={-140} y={-90} width={280} height={160} rx={30} fill="#FFFDF8" stroke={B.gold} strokeWidth={6} />
+    <text x={0} y={10} textAnchor="middle" fontFamily="Alexandria" fontWeight={800} fontSize={96} fill={B.ink}>{ar}</text>
+    <text x={0} y={56} textAnchor="middle" fontFamily="Alexandria" fontWeight={600} fontSize={32} fill={B.goldD}>{unit}</text></g>);
+};
+
+export const PRopeLabel: React.FC<{label?: string}> = ({label = 'حب الدنيا'}) => (<g transform="translate(0 -110)">
+  <circle r={110} fill="url(#bGold)" /><circle r={96} fill="none" stroke="#FFF6D6" strokeWidth={4} />
+  <text y={14} textAnchor="middle" direction="rtl" fontFamily="Alexandria" fontWeight={800} fontSize={label.length > 8 ? 30 : 40} fill={B.ink}>{label}</text></g>);
+
+export const PThoughtIcon: React.FC<{icon?: string; tailDir?: number}> = ({icon = 'grave', tailDir = -1}) => (<g>
+  <ellipse cx={0} cy={-130} rx={170} ry={130} fill="#FFFDF8" stroke={B.ink} strokeWidth={5} />
+  <circle cx={tailDir * 140} cy={20} r={16} fill="#FFFDF8" stroke={B.ink} strokeWidth={4} />
+  <circle cx={tailDir * 170} cy={54} r={9} fill="#FFFDF8" stroke={B.ink} strokeWidth={4} />
+  <g transform="translate(0 -60) scale(0.55)">{icon === 'house' ? <PHouseMini /> : icon === 'coins' ? <PCoinsMini /> : <PGraveMini />}</g></g>);
+const PGraveMini = () => (<g><path d="M-170 0 Q0 -110 170 0 Z" fill="#9E8467" /><rect x={-28} y={-150} width={56} height={120} rx={14} fill="url(#bGrey)" /></g>);
+const PHouseMini = () => (<g><path d="M-120 0 V-180 H120 V0 Z" fill="url(#bWall)" /><path d="M-40 0 V-92 Q-10 -124 20 -92 V0 Z" fill="url(#bWood)" /></g>);
+const PCoinsMini = () => (<g><path d="M-80 0 Q-60 -60 0 -70 Q60 -60 80 0 Z" fill="url(#bGold)" /></g>);
+
+export const PHeartCry: React.FC<{progress?: number; t?: number}> = ({progress = 1, t = 0}) => (<g transform="translate(0 -120)">
+  <path d="M0 60 C-110 -10 -90 -110 0 -60 C90 -110 110 -10 0 60 Z" fill={B.coral} />
+  {[[-40, 70], [30, 90], [0, 110]].map(([x, y], i) => <path key={i} transform={`translate(${x} ${y + ((t * 60 + i * 30) % 60)})`} d="M0 -12 Q8 0 0 10 Q-8 0 0 -12 Z" fill={B.sky} />)}
+  {progress > 0.02 && <path d={`M-110 -90 L${-110 + 220 * progress} ${-90 + 180 * progress}`} stroke={B.ink} strokeWidth={14} strokeLinecap="round" />}</g>);

@@ -159,7 +159,7 @@ def lint(sb: dict, sacred: list, cfg: dict, stage: str = "stills", approvals: di
                 if G.overlap(a[1], b[1], pad=6):
                     r.warn("LAYOUT_OVERLAP", w, f"«{a[0]}» راكب على «{b[0]}»", "بعّدهم أو حط overlapOk لو مقصود")
             bx = boxes[i][1]
-            if bx[0] < -40 or bx[2] > SCREEN_W + 40:
+            if (bx[0] < -40 or bx[2] > SCREEN_W + 40) and not boxes[i][2].get("offscreenOk"):
                 r.warn("LAYOUT_EDGE", w, f"«{boxes[i][0]}» خارج الشاشة")
         for e in els.values():
             lab = e.get("label")

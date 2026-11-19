@@ -9,7 +9,8 @@ SIZES = {
     "car": (270, 90), "villa": (360, 260), "plane": (320, 110), "yacht": (340, 160), "mountain": (520, 420),
     "valley": (600, 160), "ladder": (110, 520), "conveyor": (520, 70), "kaaba": (260, 280), "rope": (0, 0),
     "ayah_card": (900, 520), "sign": (230, 300), "badge": (96, 96), "cross": (220, 220), "path": (1000, 10),
-    "goldvalley": (300, 170), "thought": (440, 240), "hadith_card": (900, 520), "chart": (600, 420), "icon": (120, 120),
+    "goldvalley": (300, 170), "thought": (440, 240), "stop": (130, 440), "paper": (300, 260), "infinity": (200, 100),
+    "stamp": (360, 150), "counter": (280, 170), "ropelabel": (220, 220), "thoughticon": (340, 280), "heartx": (240, 240), "hadith_card": (900, 520), "chart": (600, 420), "icon": (120, 120),
 }
 BLOCKING = {"mountain", "house", "flat", "villa", "building"}
 

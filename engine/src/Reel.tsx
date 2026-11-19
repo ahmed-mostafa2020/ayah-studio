@@ -1,12 +1,12 @@
 import React from 'react';
 import {AbsoluteFill, Audio, Easing, Img, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
-import {B, BHeart, BMascot, BrandDefs, PCar, PCoins, PFlat, PGrave, PHouse, PLantern, PMat, PPalm, PQuran, PSack, Person} from './brand/Brand';
-import {NafsShadow, PBadge, PChart, PGoldValley, PPath, PSign, PThought, PXMark, PConveyor, PHourglass, PKaaba, PLadder, PMountain, PPlane, PValley, PVilla, PYacht, PersonSujood, lookFor} from './brand/Extra';
+import {B, BHeart, BMascot, BrandDefs, sideHand, PCar, PCoins, PFlat, PGrave, PHouse, PLantern, PMat, PPalm, PQuran, PSack, Person} from './brand/Brand';
+import {NafsShadow, PStop, PPaper, PInfinity, PStamp, PCounter, PRopeLabel, PThoughtIcon, PHeartCry, PBadge, PChart, PGoldValley, PPath, PSign, PThought, PXMark, PConveyor, PHourglass, PKaaba, PLadder, PMountain, PPlane, PValley, PVilla, PYacht, PersonSujood, lookFor} from './brand/Extra';
 import {useFonts} from './fonts';
 import type {Caption, Character, Element, Motion, Scene, Storyboard} from './types';
 
 const W = 1080, H = 1920;
-const TOP = new Set(['thought', 'xmark', 'badge']);
+const TOP = new Set(['thought', 'xmark', 'badge', 'thoughticon', 'stamp']);
 // gentle idle motion per element (background layer of motion — nothing on screen is ever frozen)
 const IDLE: Record<string, (t: number) => string> = {
   thought: (t) => `translate(0 ${Math.sin(t * 1.3) * 7})`,
@@ -71,19 +71,27 @@ const Paper: React.FC<{mood?: string; kind?: string; light: number; t: number}> 
 
 // ---------- library ----------
 const ElementShape: React.FC<{e: Element; t: number; progress?: number}> = ({e, t, progress = 1}) => {
-  const ee = e as Element & {trend?: string; w?: number};
+  const ee = e as Element & {trend?: string; w?: number; h?: number; icon?: string; from?: any; to?: any; unit?: string};
   switch (e.type) {
+    case 'stop': return <PStop label={e.label} />;
+    case 'paper': return <PPaper label={e.label} />;
+    case 'infinity': return <PInfinity />;
+    case 'stamp': return <PStamp label={e.label} />;
+    case 'counter': return <PCounter from={Number(ee.from ?? 20)} to={Number(ee.to ?? 80)} progress={progress} unit={ee.unit} />;
+    case 'ropelabel': return <PRopeLabel label={e.label} />;
+    case 'thoughticon': return <PThoughtIcon icon={ee.icon} tailDir={e.x > 540 ? -1 : 1} />;
+    case 'heartx': return <PHeartCry progress={progress === 1 ? 0 : progress} t={t} />;
     case 'path': return <PPath w={ee.w} />;
-    case 'thought': return <PThought label={e.label ?? ''} fontSize={e.fontSize} w={ee.w} tailDir={e.x > 540 ? -1 : 1} />;
+    case 'thought': return <PThought label={e.label ?? ''} sub={(e as any).sub} fontSize={e.fontSize} w={ee.w} tailDir={e.x > 540 ? -1 : 1} />;
     case 'sign': return <PSign label={e.label ?? ''} fontSize={e.fontSize} />;
     case 'badge': return <PBadge label={e.label ?? ''} />;
     case 'chart': return <PChart progress={progress} trend={ee.trend} />;
     case 'xmark': return <PXMark />;
-    case 'goldvalley': return <PGoldValley />;
+    case 'goldvalley': return <g transform={`scale(1 ${Math.max(0.02, progress)})`}><PGoldValley /></g>;
     case 'house': return <PHouse />; case 'sack': return <PSack />; case 'coins': return <PCoins />; case 'lantern': return <PLantern />;
     case 'quran': return <PQuran />; case 'palm': return <PPalm />; case 'grave': return <PGrave />; case 'mat': return <PMat />;
     case 'flat': return <PFlat />; case 'car': return <PCar />; case 'villa': return <PVilla />; case 'plane': return <PPlane />;
-    case 'yacht': return <PYacht />; case 'mountain': return <PMountain />; case 'valley': return <PValley />; case 'ladder': return <PLadder />;
+    case 'yacht': return <PYacht />; case 'mountain': return <PMountain />; case 'valley': return <PValley />; case 'ladder': return <PLadder h={ee.h} />;
     case 'conveyor': return <PConveyor t={t} />; case 'kaaba': return <PKaaba />;
     case 'icon': return <PHourglass />;
     default: return <rect x={-60} y={-120} width={120} height={120} rx={20} fill={B.soft} />;
@@ -212,7 +220,16 @@ const SceneView: React.FC<{sc: Scene; t: number; sacred: SacredSpan[]}> = ({sc, 
             {sc.elements.filter((e) => !e.type.endsWith('_card') && e.type !== 'rope' && !TOP.has(e.type)).map((e) => {
               const a = animate(sc.motion, e.id, t);
               const idle = IDLE[e.type]?.(t) ?? '';
-              return <g key={e.id} opacity={a.opacity} transform={`translate(${(a.x ?? e.x) + a.dx} ${e.y + a.dy}) scale(${(e.scale ?? 1) * a.scale}) ${idle}`}><ElementShape e={e} t={t} progress={a.light} /></g>;
+              return <g key={e.id} opacity={a.opacity} transform={`translate(${(a.x ?? e.x) + a.dx} ${e.y + a.dy}) scale(${(e.scale ?? 1) * a.scale}) ${idle}`}><ElementShape e={e} t={t} progress={a.light} />{(e as any).caption && <text y={70} textAnchor="middle" direction="rtl" fontFamily="Alexandria" fontWeight={800} fontSize={64} fill={B.ink}>{(e as any).caption}</text>}</g>;
+            })}
+            {sc.elements.filter((e) => e.type === 'rope').map((e) => {
+              const c = sc.characters.find((ch) => ch.id === e.from?.character);
+              const tg = sc.elements.find((x) => x.id === e.to);
+              if (!c || !tg) return null;
+              const a = animate(sc.motion, c.id, t), at = animate(sc.motion, tg.id, t);
+              const [hx, hy] = sideHand((a.x ?? c.x) + a.dx, c.y + a.dy, (lookFor(c.kind).s ?? 1) * (c.scale ?? 1), c.flip);
+              const tx = (at.x ?? tg.x) + at.dx, ty = tg.y - 110 * (tg.scale ?? 1);
+              return <path key={e.id} d={`M${hx} ${hy} Q${(hx + tx) / 2} ${Math.max(hy, ty) + 30} ${tx} ${ty}`} stroke="#8A6446" strokeWidth={8} fill="none" strokeLinecap="round" />;
             })}
             {sc.characters.map((c) => {
               const a = animate(sc.motion, c.id, t);
