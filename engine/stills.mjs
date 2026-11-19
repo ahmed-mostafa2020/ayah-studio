@@ -8,8 +8,9 @@ import {spawnSync} from 'node:child_process';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const slug = process.argv[2];
-const only = (process.argv.find((a) => a.startsWith('--scenes=')) ?? '').slice(9).split(',').filter(Boolean);
 const P = join(process.env.AYAH_PROJECTS ?? join(ROOT, 'projects'), slug);
+let only = (process.argv.find((a) => a.startsWith('--scenes=')) ?? '').slice(9).split(',').filter(Boolean);
+if (only[0] === '@chat') { only = existsSync(join(P, 'chat_last.json')) ? JSON.parse(readFileSync(join(P, 'chat_last.json'), 'utf8')).scenes : []; if (!only.length) process.exit(0); }
 const sb = JSON.parse(readFileSync(join(P, 'storyboard.json'), 'utf8'));
 const sacred = existsSync(join(P, 'sacred.json')) ? JSON.parse(readFileSync(join(P, 'sacred.json'), 'utf8')).spans : [];
 const browserExecutable = process.env.AYAH_CHROME || ['/usr/bin/google-chrome', 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'].find(existsSync) || null;

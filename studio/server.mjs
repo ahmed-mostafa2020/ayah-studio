@@ -162,7 +162,10 @@ createServer(async (req, res) => {
             const mode = ['claude', 'claude-code', 'local', 'manual'].includes(body.mode) ? body.mode : 'claude';
             const extra = [];
             if (mode === 'manual') { const f = join(d, 'ai_answer.txt'); writeFileSync(f, String(body.answer ?? '')); extra.push('--answer', f); }
-            return [[PY, ['-m', 'ayah_pipeline', 'ai', body.task, slug, '--mode', mode, ...(body.ids ? ['--ids', body.ids.join(',')] : []), ...extra]]];
+            if (body.task === 'chat') { const f = join(d, 'chat_msg.txt'); writeFileSync(f, String(body.message ?? '')); extra.push('--message-file', f); }
+            const steps = [[PY, ['-m', 'ayah_pipeline', 'ai', body.task, slug, '--mode', mode, ...(body.ids ? ['--ids', body.ids.join(',')] : []), ...extra]]];
+            if (body.task === 'chat') steps.push(node(join(ROOT, 'engine/stills.mjs'), slug, '--scenes=@chat'));
+            return steps;
           },
           render: () => body.to
             ? [node(join(ROOT, 'engine/render.mjs'), slug, `--to=${Math.max(5, Math.min(120, Number(body.to) || 20))}`)]  // preview: first N seconds
@@ -174,7 +177,8 @@ createServer(async (req, res) => {
       }
       if (what === 'prompt') {
         const task = url.searchParams.get('task') ?? 'plan';
-        const out = await new Promise((ok) => { const p = spawn(...py('ai', task, slug, '--prompt'), {cwd: ROOT, env: ENV}); let o = ''; p.stdout.on('data', (x) => (o += x)); p.on('close', () => ok(o)); });
+        const msg = url.searchParams.get('message') ?? '';
+        const out = await new Promise((ok) => { const p = spawn(...py('ai', task, slug, '--prompt', ...(msg ? ['--message', msg] : [])), {cwd: ROOT, env: ENV}); let o = ''; p.stdout.on('data', (x) => (o += x)); p.on('close', () => ok(o)); });
         return send(res, 200, out, 'text/plain; charset=utf-8');
       }
       if (what === 'estimate') {

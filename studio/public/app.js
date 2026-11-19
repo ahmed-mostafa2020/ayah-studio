@@ -197,6 +197,13 @@ const TABS = {
       <div id="bjob"></div><div id="metaBox"></div>
       ${lint ? `<div class="card"><h3>الفاحص: <span class="pill ${lint.errors.length ? 'err' : 'ok'}">${lint.errors.length} خطأ</span> <span class="pill warn">${lint.warnings.length} تنبيه</span></h3>
         <ul class="lint">${[...lint.errors, ...lint.warnings].slice(0, 30).map((i) => `<li>${i.severity === 'error' ? '✗' : '!'} <b>${esc(i.where)}</b>: ${esc(i.msg)} ${i.fix ? `<span class="muted">← ${esc(i.fix)}</span>` : ''}</li>`).join('')}</ul></div>` : ''}
+      <div class="card ai" id="chat"><div class="row"><h3 class="grow">💬 كلّم الستوري بورد (اختياري)</h3><span class="pill warn">بيستخدم AI</span></div>
+        <p class="muted">اكتب بالعامية اللي عايزه، زي «خلي مشهد s5 سلّم وزوّد طيارة» أو «الفقاعة في s2 تقول كفاية؟» أو «غيّر الهوك». الـ AI بيحوّل كلامك لتعديل، والأداة بتعيد صور المشاهد اللي اتغيّرت بس. الكابشن وكروت الآيات والقواعد الشرعية مابيتغيّروش. <b>حوالي 2 ألف توكن للرسالة.</b></p>
+        <div id="chatLog" style="max-height:260px;overflow:auto"></div>
+        <div class="row"><textarea id="chatIn" placeholder="اكتب طلبك…" style="min-height:48px" class="grow"></textarea></div>
+        <div class="row"><select id="chatMode"><option value="claude-code" ${S.cfg.hasClaudeCode ? '' : 'disabled'}>Claude Code (اشتراكك)</option><option value="manual">انسخ والصق في أي AI</option>
+          <option value="claude" ${S.cfg.hasClaudeKey ? '' : 'disabled'}>مفتاح Claude API</option><option value="local">Ollama على جهازك</option></select>
+          <button class="gold" id="chatGo">ابعت</button></div><div id="chatJob"></div></div>
       <div id="scenes"></div>`;
     const plan = async (mode) => {
       if (mode !== 'rules') {
@@ -212,6 +219,27 @@ const TABS = {
     if (pub) $('#metaBox').insertAdjacentHTML('beforeend', `<div class="card"><h3>للنشر</h3><p><b>العنوان:</b> ${esc(pub.title)}</p><p><b>الوصف:</b> ${esc(pub.description)}</p><p><b>التعليق المثبّت:</b> ${esc(pub.pinned)}</p><p class="muted">${esc((pub.hashtags || []).join(' '))}</p></div>`);
     $('#planRules').onclick = () => plan('rules');
     $('#planBox').append(await aiBox('plan', () => TABS.board()));
+    const drawChat = async () => {
+      const h = (await get('chat.json')) || [];
+      $('#chatLog').innerHTML = h.map((m) => `<div style="margin:6px 0;padding:8px 12px;border-radius:12px;background:${m.role === 'user' ? '#fff' : 'var(--paper2)'}"><b>${m.role === 'user' ? 'انت' : 'الأداة'}:</b> ${esc(m.text)}${m.changed?.length ? ` <span class="muted">(${m.changed.join('، ')})</span>` : ''}</div>`).join('');
+      $('#chatLog').scrollTop = 1e6;
+    };
+    drawChat();
+    if (!S.cfg.hasClaudeCode) $('#chatMode').value = 'manual';
+    $('#chatGo').onclick = async () => {
+      const message = $('#chatIn').value.trim(); if (!message) return;
+      const mode = $('#chatMode').value; let answer;
+      if (mode === 'manual') {
+        const prompt = await fetch(`/api/p/${encodeURIComponent(S.slug)}/prompt?task=chat&message=${encodeURIComponent(message)}`).then((r) => r.text());
+        const ok = await confirmBox(`<h3>انسخ والصق</h3><p class="muted">انسخ الطلب ده والصقه في أي شات AI، وبعدين الصق رده كله تحت.</p>
+          <textarea id="pp" readonly style="height:140px;font-size:12px">${esc(prompt)}</textarea><button type="button" id="cp">انسخ الطلب</button>
+          <textarea id="pa" placeholder="الصق الرد هنا" style="height:120px;margin-top:10px"></textarea>`, 'طبّق');
+        if (!ok) return; answer = $('#pa').value; if (!answer.trim()) return toast('ماتلصقش رد');
+      }
+      const j = await run('ai', {task: 'chat', mode, message, answer}).catch((e) => toast(e.message)); if (!j) return;
+      const r = await follow(j, $('#chatJob'), 'بيطبّق طلبك ويعيد صور المشاهد');
+      if (r.status === 'done') { $('#chatIn').value = ''; TABS.board(); }
+    };
     $('#saveHook').onclick = async () => { if (!sb) return; sb.template.hook.text = $('#hook').value.trim(); sb.meta.title = sb.template.hook.text; await put('storyboard.json', sb); toast('الهوك اتحفظ. أعد صورة أول فريم من «الصور»'); };
     if (!sb) return;
     $('#scenes').innerHTML = sb.scenes.filter((s) => s.id !== 'outro').map((s) => {

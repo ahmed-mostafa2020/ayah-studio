@@ -152,12 +152,82 @@ def estimate(p: Project, task: str) -> dict:
     elif task == "plan":
         from .planner import estimate as plan_est
         return {"task": task, **plan_est(p)}
+    elif task == "chat":
+        n_in, n_out = len(_chat_prompt(p, "x" * 60)) / CHARS_PER_TOKEN, 220
     else:
         raise ValueError(task)
     return {"task": task, "input": round(n_in), "output": round(n_out), "total": round(n_in + n_out)}
 
 
-def build(p: Project, task: str, ids: list | None = None) -> dict:
+# ---------------- chat: talk to the storyboard ----------------
+def _chat_prompt(p: Project, message: str) -> str:
+    from . import recipes as R
+    sb = p.read("storyboard.json")
+    hist = p.read("chat.json")[-4:] if p.has("chat.json") else []
+    scenes = "\n".join(
+        f'{s["id"]} [{s["start"]:.1f}–{s["end"]:.1f}] {s.get("recipe") or ("كارت" if s.get("role") == "sacred" else "-")} {json.dumps(s.get("params", {}), ensure_ascii=False)} | «{s["meaning"][:70]}»'
+        for s in sb["scenes"] if s["id"] != "outro")
+    cat = "\n".join(f"- {k}: {v}" for k, v in R.CATALOG.items() if k != "card")
+    past = "\n".join(f"{m['role']}: {m['text']}" for m in hist)
+    return f"""أنت مساعد مونتاج جوه أداة «ستوديو آية». المستخدم بيكلمك بالعامية عن الستوري بورد، وانت بتحوّل كلامه لتعديلات.
+الوصفات المتاحة:
+{cat}
+باراميترات: thought: text, sub · sign/chase: text · want/hypo/count/no: obj (coins, house, flat, car, villa, plane, yacht, sack), n · ladder: items · valleys: n (1–3) · years: from, to, stamp · tug: text · remember: icon (grave, house, coins) · paper: text.
+القواعد: ممنوع تعديل نص الكابشن (لازم يطابق كلام الشيخ)، وممنوع تعديل مشاهد الكروت (الآيات والأحاديث). ممنوع أي رسم لنبي أو رمز لله أو تصوير الجنة والنار أو عنف أو موسيقى. لو الطلب ممنوع أو مش واضح، ماتعملش تعديل وقول السبب في reply.
+الكلام اللي على الشاشة (فقاعات ولافتات) بلهجة الشيخ المصرية.
+الهوك الحالي: «{sb["template"]["hook"]["text"]}»
+المشاهد (id [من–لحد] الوصفة الباراميترات | الكلام):
+{scenes}
+{("آخر رسائل:\n" + past) if past else ""}
+رسالة المستخدم: {message}
+رجّع JSON بس:
+{{"ops":[{{"op":"recipe","scene":"s4","recipe":"ladder","params":{{}}}}, {{"op":"params","scene":"s2","params":{{"text":"..."}}}}, {{"op":"hook","text":"..."}}, {{"op":"mood","scene":"s3","mood":"calm|warm|cold"}}], "reply":"رد قصير بالعامية بيقول عملت إيه"}}
+"""
+
+
+def apply_chat(p: Project, text: str, message: str, mode: str) -> dict:
+    from . import recipes as R
+    from .planner import rescene
+    res = parse_json(text)
+    sb = p.read("storyboard.json")
+    ids = {s["id"]: s for s in sb["scenes"]}
+    changed, notes = [], []
+    for op in res.get("ops", []):
+        kind, sid = op.get("op"), op.get("scene")
+        if kind == "hook" and op.get("text"):
+            sb = p.read("storyboard.json")
+            sb["template"]["hook"]["text"] = op["text"].strip()
+            sb["meta"]["title"] = op["text"].strip()
+            p.write("storyboard.json", sb)
+            changed.append("f0")
+            continue
+        if sid not in ids or ids[sid].get("role") == "sacred" or sid == "outro":
+            notes.append(f"تجاهلت تعديل على {sid}")
+            continue
+        if kind == "recipe" and op.get("recipe") in R.CATALOG and op["recipe"] != "card":
+            rescene(p, sid, op["recipe"], op.get("params", {}))
+        elif kind == "params":
+            cur = p.read("storyboard.json")
+            sc = next(s for s in cur["scenes"] if s["id"] == sid)
+            rescene(p, sid, sc.get("recipe"), {**sc.get("params", {}), **op.get("params", {})})
+        elif kind == "mood" and op.get("mood") in ("calm", "warm", "cold"):
+            cur = p.read("storyboard.json")
+            for s in cur["scenes"]:
+                if s["id"] == sid:
+                    s.setdefault("background", {})["mood"] = op["mood"]
+            p.write("storyboard.json", cur)
+        else:
+            continue
+        changed.append(sid)
+    hist = p.read("chat.json") if p.has("chat.json") else []
+    reply = res.get("reply", "تمام") + (" (" + "، ".join(notes) + ")" if notes else "")
+    hist += [{"role": "user", "text": message}, {"role": "assistant", "text": reply, "changed": changed, "by": mode}]
+    p.write("chat.json", hist[-40:])
+    p.write("chat_last.json", {"scenes": sorted(set(changed))})
+    return {"reply": reply, "changed": changed}
+
+
+def build(p: Project, task: str, ids: list | None = None, message: str = "") -> dict:
     """the exact prompt for a task (used by every mode, including copy/paste into any AI chat)."""
     tr = p.read("transcript.json")
     if task == "hadith":
@@ -174,6 +244,8 @@ def build(p: Project, task: str, ids: list | None = None) -> dict:
     if task == "plan":
         from .planner import build_prompt
         return {"prompt": build_prompt(tr)}
+    if task == "chat":
+        return {"prompt": _chat_prompt(p, message)}
     raise ValueError(task)
 
 
@@ -210,10 +282,18 @@ def apply(p: Project, task: str, text: str, mode: str, ids: list | None = None) 
     raise ValueError(task)
 
 
-def run(p: Project, task: str, mode: str, ids: list | None = None, answer: str | None = None) -> dict:
+def run(p: Project, task: str, mode: str, ids: list | None = None, answer: str | None = None, message: str = "") -> dict:
     """mode: claude (API key) · claude-code (your subscription via Claude Code) · local (Ollama) · manual (answer pasted from any AI chat)."""
     cfg = load_config(p)
-    b = build(p, task, ids)
+    b = build(p, task, ids, message)
+    if task == "chat":
+        text = answer if mode == "manual" else call(b["prompt"], mode, cfg, task="chat", max_tokens=1500)
+        if not text:
+            raise RuntimeError("الصق رد الـ AI الأول")
+        out = apply_chat(p, text, message, mode)
+        from .lint import lint_project
+        lint_project(p)
+        return out
     if mode == "manual":
         if not answer:
             raise RuntimeError("الصق رد الـ AI الأول")

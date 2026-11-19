@@ -15,9 +15,10 @@ def main(argv=None):
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("new"); s.add_argument("slug"); s.add_argument("src")
     s = sub.add_parser("rescene"); s.add_argument("slug"); s.add_argument("scene"); s.add_argument("--recipe"); s.add_argument("--params")
-    s = sub.add_parser("ai"); s.add_argument("task", choices=["hadith", "words", "meta", "review", "plan"]); s.add_argument("slug")
+    s = sub.add_parser("ai"); s.add_argument("task", choices=["hadith", "words", "meta", "review", "plan", "chat"]); s.add_argument("slug")
     s.add_argument("--mode", choices=["claude", "claude-code", "local", "manual"], default="claude"); s.add_argument("--estimate", action="store_true"); s.add_argument("--ids")
     s.add_argument("--prompt", action="store_true", help="print the prompt to paste into any AI chat"); s.add_argument("--answer", help="file with the AI reply (manual mode)")
+    s.add_argument("--message", default="", help="chat: what you want changed, in your own words"); s.add_argument("--message-file")
     s = sub.add_parser("mix"); s.add_argument("slug"); s.add_argument("--to", type=float)
     s = sub.add_parser("srt"); s.add_argument("slug")
     s = sub.add_parser("recipes"); s.add_argument("slug", nargs="?", default="_")
@@ -59,10 +60,11 @@ def main(argv=None):
         if a.estimate:
             return _out(ai.estimate(p, a.task))
         ids = a.ids.split(",") if a.ids else None
+        msg = open(a.message_file, encoding="utf-8").read() if a.message_file else a.message
         if a.prompt:
-            return print(ai.build(p, a.task, ids)["prompt"])
+            return print(ai.build(p, a.task, ids, msg)["prompt"])
         answer = open(a.answer, encoding="utf-8").read() if a.answer else None
-        _out(ai.run(p, a.task, a.mode, ids, answer))
+        _out(ai.run(p, a.task, a.mode, ids, answer, msg))
     elif a.cmd == "mix":
         from .mix import mix
         _out(mix(p, a.to))
