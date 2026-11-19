@@ -27,7 +27,23 @@ def probe(path: Path) -> dict:
     }
 
 
+def download(p: Project, url: str) -> str:
+    """import from a link (YouTube, Facebook, X, Telegram public posts, direct mp3/mp4…) — the only step that needs internet."""
+    import yt_dlp
+    out = str(p.file("download.%(ext)s"))
+    opts = {"format": "bestaudio/best", "outtmpl": out, "quiet": True, "noplaylist": True,
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}]}
+    with yt_dlp.YoutubeDL(opts) as y:
+        info = y.extract_info(url, download=True)
+    path = next(p.dir.glob("download.*"))
+    meta = {"url": url, "title": info.get("title"), "uploader": info.get("uploader")}
+    p.write("source_link.json", meta)  # for the post credit (name + original link go in the description, never in the video)
+    return str(path)
+
+
 def ingest(p: Project, src: str) -> dict:
+    if src.startswith(("http://", "https://")):
+        src = download(p, src)
     """Copy the source in and extract source.wav (48 kHz, kept untouched) + voice16.wav for whisper."""
     srcp = Path(src)
     dst = p.file("source" + srcp.suffix.lower())

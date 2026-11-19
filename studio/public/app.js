@@ -93,18 +93,21 @@ const TABS = {
       <div class="card"><h2>مقطع جديد</h2>
         <div class="drop-zone"><div class="row" style="justify-content:center">
           <input id="nslug" placeholder="اسم المشروع (مثلًا nafs-tatma3)" />
-          <input id="nfile" type="file" accept="audio/*,video/*" />
+          <input id="nfile" type="file" accept="audio/*,video/*" /> <span class="muted">أو</span>
+          <input id="nlink" placeholder="لينك (يوتيوب، فيسبوك…)" style="min-width:240px" />
           <button class="primary" id="ngo">استيراد وتفريغ</button></div>
-          <p class="muted">mp3 أو mp4 أو wav. التفريغ بيشتغل على جهازك من غير إنترنت، وبياخد دقايق حسب طول المقطع.</p></div>
+          <p class="muted">mp3 أو mp4 أو wav، أو لينك (اللينك بس اللي محتاج إنترنت). الأداة بتاخد الصوت بس. التفريغ بيشتغل على جهازك، وبياخد دقايق حسب طول المقطع.</p></div>
         <div id="njob"></div></div>
       <div class="card"><h2>المشاريع</h2><table><tr><th>المشروع</th><th>المرحلة</th><th>المدة</th><th></th></tr>
         ${list.map((p) => `<tr><td><b>${esc(p.slug)}</b></td><td><span class="pill">${esc(p.stage)}</span></td><td>${p.duration ? fmt(p.duration) : ''}</td>
           <td><button data-open="${esc(p.slug)}">افتح</button></td></tr>`).join('') || '<tr><td colspan=4 class="muted">مفيش مشاريع لسه</td></tr>'}</table></div>`;
     view.querySelectorAll('[data-open]').forEach((b) => (b.onclick = () => openProject(b.dataset.open)));
     $('#ngo').onclick = async () => {
-      const slug = $('#nslug').value.trim(), f = $('#nfile').files[0];
-      if (!slug || !f) return toast('اكتب اسم واختار ملف');
-      const r = await api(`/projects?slug=${encodeURIComponent(slug)}&name=${encodeURIComponent(f.name)}`, {method: 'POST', body: f}).catch((e) => toast(e.message));
+      const slug = $('#nslug').value.trim(), f = $('#nfile').files[0], link = $('#nlink').value.trim();
+      if (!slug || (!f && !link)) return toast('اكتب اسم واختار ملف أو حط لينك');
+      const r = link
+        ? await api(`/projects?slug=${encodeURIComponent(slug)}&link=${encodeURIComponent(link)}`, {method: 'POST'}).catch((e) => toast(e.message))
+        : await api(`/projects?slug=${encodeURIComponent(slug)}&name=${encodeURIComponent(f.name)}`, {method: 'POST', body: f}).catch((e) => toast(e.message));
       if (!r) return;
       S.slug = slug; localStorage.setItem('ayah.slug', slug); setCurrent();
       const j = await follow({id: r.job}, $('#njob'), 'استيراد ← تفريغ ← كشف الخلفية ← كشف الآيات');

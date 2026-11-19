@@ -112,7 +112,14 @@ createServer(async (req, res) => {
       if (req.method === 'POST') {
         // raw upload: ?slug=...&name=file.mp3
         const slug = url.searchParams.get('slug') ?? '';
+        const link = url.searchParams.get('link');
         const name = (url.searchParams.get('name') ?? 'source.mp3').replace(/[^\w.\-]/g, '_');
+        if (link) {
+          if (!slugOk(slug) || !/^https?:\/\//.test(link)) return send(res, 400, {error: 'اسم المشروع أو اللينك مش مظبوط'});
+          mkdirSync(join(PROJECTS, slug), {recursive: true});
+          const job = runJob('تنزيل من اللينك وتفريغ', [py('new', slug, link), py('transcribe', slug), py('analyze', slug), py('sacred', slug)]);
+          return send(res, 200, {slug, job: job.id});
+        }
         if (!slugOk(slug)) return send(res, 400, {error: 'اسم المشروع: حروف وأرقام وشرطة بس'});
         const d = join(PROJECTS, slug);
         mkdirSync(d, {recursive: true});
